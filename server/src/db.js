@@ -134,6 +134,28 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_outreach_status ON outreach(status, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_outreach_tenant ON outreach(tenant_id);
 
+  -- Raw businesses gathered by the bot's collect command (Yellow Pages,
+  -- Google Places, ...) BEFORE any demo is generated. The admin reviews these,
+  -- fills in a contact email, and dismisses or keeps each. dedupe_key makes
+  -- bulk inserts idempotent so re-running collect never duplicates a lead.
+  CREATE TABLE IF NOT EXISTS leads (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    business    TEXT NOT NULL,
+    website     TEXT,
+    email       TEXT,
+    phone       TEXT,
+    address     TEXT,
+    category    TEXT,
+    region      TEXT,
+    source      TEXT,                          -- yellowpages | google-places | manual
+    dedupe_key  TEXT UNIQUE,                    -- normalized name|host, set by the API
+    status      TEXT NOT NULL DEFAULT 'new',    -- new | dismissed
+    notes       TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status, created_at DESC);
+
   -- In-dashboard notification feed (also emailed to the admin per settings).
   CREATE TABLE IF NOT EXISTS notifications (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -385,6 +407,25 @@ export const queries = {
     ORDER BY created_at ASC LIMIT 200
   `),
   markOutreachSheetSynced: db.prepare(`UPDATE outreach SET sheet_synced = 1 WHERE id = ?`),
+
+  // ---- leads (collected businesses awaiting review) ----
+  insertLead: db.prepare(`
+    INSERT OR IGNORE INTO leads (business, website, email, phone, address, category, region, source, dedupe_key)
+    VALUES (@business, @website, @email, @phone, @address, @category, @region, @source, @dedupe_key)
+  `),
+  listLeads: db.prepare(`SELECT * FROM leads ORDER BY created_at DESC LIMIT 1000`),
+  listLeadsByStatus: db.prepare(`SELECT * FROM leads WHERE status = ? ORDER BY created_at DESC LIMIT 1000`),
+  getLead: db.prepare(`SELECT * FROM leads WHERE id = ?`),
+  countLeadsByStatus: db.prepare(`SELECT status, COUNT(*) AS n FROM leads GROUP BY status`),
+  updateLead: db.prepare(`
+    UPDATE leads SET
+      business = @business, website = @website, email = @email, phone = @phone,
+      address = @address, category = @category, region = @region, notes = @notes,
+      updated_at = datetime('now')
+    WHERE id = @id
+  `),
+  setLeadStatus: db.prepare(`UPDATE leads SET status = @status, updated_at = datetime('now') WHERE id = @id`),
+  deleteLead: db.prepare(`DELETE FROM leads WHERE id = ?`),
 
   // ---- notifications ----
   insertNotification: db.prepare(`

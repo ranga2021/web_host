@@ -1,6 +1,7 @@
 import { config, live } from './config.js';
 import { log } from './log.js';
 import { makeSheets } from './sheets.js';
+import { makeLeadSink } from './leadSink.js';
 import { searchYellowPages } from './sources/yellowpages.js';
 import { searchPlaces } from './sources/places.js';
 
@@ -86,8 +87,22 @@ export async function runCollect() {
 
   log.info(`collected ${collected.length}, ${fresh.length} new after dedupe`);
   if (fresh.length) {
-    const n = await sheets.appendBusinesses(fresh);
-    log.ok(`appended ${n} new lead(s) to the sheet (Contact Email left blank — fill before pitching)`);
+    // 1. Host DB → these show up in the admin Leads page for review.
+    try {
+      const sink = await makeLeadSink();
+      log.info(`lead sink: ${sink.backend}`);
+      const r = await sink.push(fresh);
+      log.ok(`pushed to host: ${r.inserted} new, ${r.skipped} already known`);
+    } catch (err) {
+      log.error(`host push failed: ${err.message}`);
+    }
+    // 2. Sheet → feeds the existing `generate` pipeline.
+    try {
+      const n = await sheets.appendBusinesses(fresh);
+      log.ok(`appended ${n} new lead(s) to the sheet (Contact Email left blank — fill before pitching)`);
+    } catch (err) {
+      log.error(`sheet append failed: ${err.message}`);
+    }
   }
 
   log.info('──────────────────────────────────────');

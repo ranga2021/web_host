@@ -7,21 +7,24 @@ export default function Dashboard() {
   const [tenants, setTenants] = useState([]);
   const [inquiriesCount, setInquiriesCount] = useState(null);
   const [outreach, setOutreach] = useState({ items: [], counts: {}, emailConfigured: true });
+  const [leads, setLeads] = useState({ items: [], counts: {} });
   const [err, setErr] = useState('');
   const nav = useNavigate();
 
   async function load() {
     try {
-      const [d, t, inq, out] = await Promise.all([
+      const [d, t, inq, out, lds] = await Promise.all([
         api.listDemos(),
         api.listTenants().catch(() => []),
         api.listInquiries().catch(() => ({ counts: {}, inquiries: [] })),
         api.listOutreach().catch(() => ({ items: [], counts: {}, emailConfigured: true })),
+        api.listLeads().catch(() => ({ items: [], counts: {} })),
       ]);
       setDemos(d);
       setTenants(t);
       setInquiriesCount(inq.inquiries?.length || 0);
       setOutreach(out);
+      setLeads(lds);
     } catch (e) {
       setErr(e.message);
     }
@@ -51,9 +54,11 @@ export default function Dashboard() {
     () => items.filter((o) => o.status === 'sent'),
     [items],
   );
+  const leadItems = leads.items || [];
+  const newLeads = leadItems.filter((l) => l.status === 'new').length;
   const suggestions = useMemo(
-    () => buildSuggestions(items, inquiriesCount, outreach.emailConfigured),
-    [items, inquiriesCount, outreach.emailConfigured],
+    () => buildSuggestions(items, inquiriesCount, outreach.emailConfigured, leadItems),
+    [items, inquiriesCount, outreach.emailConfigured, leadItems],
   );
 
   if (!demos) return <div className="container muted">Loading…</div>;
@@ -78,6 +83,15 @@ export default function Dashboard() {
           <div className="label">Templates</div>
           <div className="value">{demos.length}</div>
           <div className="sub">{readyCount} live</div>
+        </div>
+        <div className="stat">
+          <div className="label">Leads</div>
+          <div className="value">{newLeads}</div>
+          <div className="sub">
+            {newLeads > 0
+              ? <Link to="/leads">to review →</Link>
+              : 'none collected'}
+          </div>
         </div>
         <div className="stat">
           <div className="label">Pipeline</div>
@@ -129,8 +143,29 @@ export default function Dashboard() {
         </div>
       </section>
 
+      {/* Collected leads awaiting review */}
+      <OutreachPanel
+        title="Recently collected — leads to review"
+        empty="No collected leads yet. Run the bot's collect command, or add prospects from Find new projects below."
+        items={leadItems.filter((l) => l.status === 'new')}
+        emptyCta={{ to: '/leads', label: 'Open leads' }}
+        seeAll="/leads"
+        render={(l) => (
+          <>
+            <div className="row between">
+              <strong className="ellipsis">{l.business}</strong>
+              <span className="badge">{l.source || 'manual'}</span>
+            </div>
+            <div className="mono muted ellipsis" style={{ fontSize: 12 }}>
+              {l.email ? l.email : (l.website ? shortUrl(l.website) : 'no email / site yet')}
+            </div>
+            {l.region && <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>{l.region}</div>}
+          </>
+        )}
+      />
+
       {/* Outbound pipeline: upcoming + sent */}
-      <div className="pipe-grid">
+      <div className="pipe-grid" style={{ marginTop: 16 }}>
         <OutreachPanel
           title="Next up — pending review"
           empty="No drafts queued. Generate demos with the bot, or add leads to your sheet."
@@ -246,8 +281,8 @@ export default function Dashboard() {
   );
 }
 
-/* ── outreach list panel (upcoming / sent) ─────────────────────────────── */
-function OutreachPanel({ title, items, render, empty, emptyCta }) {
+/* ── outreach list panel (upcoming / sent / leads) ─────────────────────── */
+function OutreachPanel({ title, items, render, empty, emptyCta, seeAll = '/outreach' }) {
   const shown = items.slice(0, 6);
   return (
     <section className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -268,7 +303,7 @@ function OutreachPanel({ title, items, render, empty, emptyCta }) {
             ))}
           </ul>
           {items.length > shown.length && (
-            <Link className="panel-more" to="/outreach">
+            <Link className="panel-more" to={seeAll}>
               View all {items.length} →
             </Link>
           )}
@@ -276,6 +311,10 @@ function OutreachPanel({ title, items, render, empty, emptyCta }) {
       )}
     </section>
   );
+}
+
+function shortUrl(u) {
+  return String(u || '').replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '');
 }
 
 /* ── lead-finding helper ───────────────────────────────────────────────── */
@@ -345,8 +384,10 @@ function FindProjects() {
 }
 
 /* ── AI suggestion engine (data-driven next-best-actions) ──────────────── */
-function buildSuggestions(items, inquiriesCount, emailConfigured) {
+function buildSuggestions(items, inquiriesCount, emailConfigured, leads = []) {
   const out = [];
+  const newLeads = leads.filter((l) => l.status === 'new');
+  const leadsNoEmail = newLeads.filter((l) => !l.email);
   const drafts = items.filter((o) => o.status === 'draft');
   const failed = items.filter((o) => o.status === 'failed');
   const sent = items.filter((o) => o.status === 'sent');
@@ -396,13 +437,26 @@ function buildSuggestions(items, inquiriesCount, emailConfigured) {
       to: '/outreach', cta: 'View sent',
     });
   }
-  if (drafts.length === 0 && sent.length === 0) {
+  if (leadsNoEmail.length) {
+    out.push({
+      tone: 'info', icon: '✉️',
+      text: `${leadsNoEmail.length} collected lead${leadsNoEmail.length === 1 ? '' : 's'} ${leadsNoEmail.length === 1 ? 'is' : 'are'} missing a contact email. Add emails so the generator can pitch them.`,
+      to: '/leads', cta: 'Add emails',
+    });
+  } else if (newLeads.length) {
+    out.push({
+      tone: 'good', icon: '🧭',
+      text: `${newLeads.length} collected lead${newLeads.length === 1 ? '' : 's'} ready with an email — run the generator to draft their demos.`,
+      to: '/leads', cta: 'Review leads',
+    });
+  }
+  if (drafts.length === 0 && sent.length === 0 && newLeads.length === 0) {
     out.push({
       tone: 'info', icon: '🌱',
-      text: 'Your outreach pipeline is empty. Add prospects to your lead sheet (or use Find new projects below) and run the generator.',
-      href: '#', cta: 'Find leads',
+      text: 'Your pipeline is empty. Collect businesses with the bot (or Find new projects below), then review them under Leads.',
+      to: '/leads', cta: 'View leads',
     });
-  } else if (drafts.length < 3) {
+  } else if (drafts.length < 3 && newLeads.length === 0) {
     out.push({
       tone: 'info', icon: '➕',
       text: 'Pipeline is running low. Line up more prospects so the generator has fresh businesses to draft tomorrow.',

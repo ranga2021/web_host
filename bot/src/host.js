@@ -80,6 +80,11 @@ async function makeLiveHost() {
     async markSynced(id) {
       await api('POST', `/api/outreach/sync/${id}/done`);
     },
+    async createLeads(records) {
+      const r = await api('POST', '/api/leads/bulk', { leads: records });
+      if (r.status !== 201 && r.status !== 200) throw new Error(`createLeads failed (${r.status}): ${JSON.stringify(r.json)}`);
+      return r.json; // { inserted, skipped, counts }
+    },
   };
 }
 
@@ -104,6 +109,7 @@ async function makeDryHost() {
     async announce(count) { log.info(`(dry) would notify: ${count} drafts ready for review`); },
     async syncPending() { return []; },
     async markSynced() {},
+    async createLeads(records) { log.info(`(dry) would push ${records.length} lead(s) to the host`); return { inserted: 0, skipped: records.length }; },
   };
 }
 

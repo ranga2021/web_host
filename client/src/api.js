@@ -61,6 +61,14 @@ export const api = {
   approveOutreach: (id) => request(`/outreach/${id}/approve`, { method: 'POST' }),
   rejectOutreach: (id) => request(`/outreach/${id}/reject`, { method: 'POST' }),
 
+  // leads (collected businesses awaiting review)
+  listLeads: (status) => request(`/leads${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  addLead: (data) => request('/leads', { method: 'POST', body: JSON.stringify(data) }),
+  updateLead: (id, data) => request(`/leads/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  dismissLead: (id) => request(`/leads/${id}/dismiss`, { method: 'POST' }),
+  restoreLead: (id) => request(`/leads/${id}/restore`, { method: 'POST' }),
+  deleteLead: (id) => request(`/leads/${id}`, { method: 'DELETE' }),
+
   // notifications
   listNotifications: () => request('/notifications'),
   notificationsUnread: () => request('/notifications/unread-count'),

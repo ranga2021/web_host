@@ -10,6 +10,7 @@ import TenantEditor from './pages/TenantEditor.jsx';
 import Inquiries from './pages/Inquiries.jsx';
 import Settings from './pages/Settings.jsx';
 import Outreach from './pages/Outreach.jsx';
+import Leads from './pages/Leads.jsx';
 import Notifications from './pages/Notifications.jsx';
 
 export default function App() {
@@ -41,6 +42,7 @@ export default function App() {
           <Route path="/tenants/new" element={<TenantEditor />} />
           <Route path="/tenants/:id" element={<TenantEditor />} />
           <Route path="/inquiries" element={<Inquiries />} />
+          <Route path="/leads" element={<Leads />} />
           <Route path="/outreach" element={<Outreach />} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/settings" element={<Settings />} />
@@ -55,6 +57,7 @@ function Sidebar({ onLogout }) {
   const nav = useNavigate();
   const [newCount, setNewCount] = useState(0);
   const [draftCount, setDraftCount] = useState(0);
+  const [leadCount, setLeadCount] = useState(0);
   const [unread, setUnread] = useState(0);
 
   // Live badges — poll every 15s.
@@ -62,14 +65,16 @@ function Sidebar({ onLogout }) {
     let cancelled = false;
     async function poll() {
       try {
-        const [inq, out, notif] = await Promise.all([
+        const [inq, out, leads, notif] = await Promise.all([
           api.listInquiries().catch(() => null),
           api.listOutreach('draft').catch(() => null),
+          api.listLeads('new').catch(() => null),
           api.notificationsUnread().catch(() => null),
         ]);
         if (cancelled) return;
         if (inq) setNewCount(inq.counts?.new || 0);
         if (out) setDraftCount(out.items?.length || 0);
+        if (leads) setLeadCount(leads.items?.length || 0);
         if (notif) setUnread(notif.unread || 0);
       } catch { /* ignore */ }
     }
@@ -100,6 +105,11 @@ function Sidebar({ onLogout }) {
         <NavLink to="/tenants">
           <span className="nav-icon">👥</span>
           <span>Tenants</span>
+        </NavLink>
+        <NavLink to="/leads">
+          <span className="nav-icon">🧭</span>
+          <span>Leads</span>
+          {leadCount > 0 && <span className="nav-badge">{leadCount}</span>}
         </NavLink>
         <NavLink to="/outreach">
           <span className="nav-icon">📨</span>
