@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../auth.js';
 import { queries } from '../db.js';
 import { notify } from '../notify.js';
+import { collectLeads, placesConfigured } from '../leadSources.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -20,6 +21,28 @@ function dedupeKey(business, website) {
 
 const counts = () => Object.fromEntries(queries.countLeadsByStatus.all().map((r) => [r.status, r.n]));
 
+// Insert a batch of collected/raw leads, deduped via dedupe_key. Returns the
+// number actually inserted (OR IGNORE skips ones already known).
+function insertLeads(records, source) {
+  let inserted = 0;
+  for (const l of records) {
+    if (!l?.business) continue;
+    const info = queries.insertLead.run({
+      business: l.business,
+      website: l.website || null,
+      email: l.email || null,
+      phone: l.phone || null,
+      address: l.address || null,
+      category: l.category || null,
+      region: l.region || null,
+      source: l.source || source || 'collect',
+      dedupe_key: dedupeKey(l.business, l.website),
+    });
+    inserted += info.changes;
+  }
+  return inserted;
+}
+
 // List all leads (optionally by status), with status counts for the tabs/badges.
 router.get('/', (req, res) => {
   const rows = req.query.status
@@ -37,22 +60,7 @@ router.get('/:id', (req, res) => {
 // Bulk insert — called by the bot's `collect` command. Idempotent via dedupe_key.
 router.post('/bulk', async (req, res) => {
   const incoming = Array.isArray(req.body?.leads) ? req.body.leads : [];
-  let inserted = 0;
-  for (const l of incoming) {
-    if (!l?.business) continue;
-    const info = queries.insertLead.run({
-      business: l.business,
-      website: l.website || null,
-      email: l.email || null,
-      phone: l.phone || null,
-      address: l.address || null,
-      category: l.category || null,
-      region: l.region || null,
-      source: l.source || 'collect',
-      dedupe_key: dedupeKey(l.business, l.website),
-    });
-    inserted += info.changes; // OR IGNORE → 0 when the dedupe_key already exists
-  }
+  const inserted = insertLeads(incoming);
   if (inserted > 0) {
     await notify({
       kind: 'leads_collected',
@@ -62,6 +70,48 @@ router.post('/bulk', async (req, res) => {
     });
   }
   res.status(201).json({ inserted, skipped: incoming.length - inserted, counts: counts() });
+});
+
+// Collect on demand — the dashboard "Collect leads" button. Runs the sources
+// (Google Places if a key is set, else/also Yellow Pages), dedupes, inserts,
+// and returns the fresh items so the UI can list them immediately.
+router.post('/collect', async (req, res) => {
+  const term = String(req.body?.category || req.body?.term || '').trim();
+  const location = String(req.body?.location || '').trim();
+  const source = String(req.body?.source || 'all').trim();
+  const limit = Math.min(50, Math.max(1, Number(req.body?.limit) || 25));
+  if (!term) return res.status(400).json({ error: 'category is required' });
+
+  let found, blocked, ran;
+  try {
+    ({ results: found, blocked, ran } = await collectLeads({ term, location, source, limit }));
+  } catch (err) {
+    return res.status(502).json({ error: err.message });
+  }
+
+  // Stamp the search location as the region for everything we just found.
+  const records = found.map((r) => ({ ...r, region: location || r.address || '' }));
+  const inserted = insertLeads(records);
+
+  if (inserted > 0) {
+    await notify({
+      kind: 'leads_collected',
+      title: `${inserted} new lead${inserted === 1 ? '' : 's'} collected`,
+      body: `Search: ${term}${location ? ` in ${location}` : ''}. Review them and add contact emails.`,
+      link: '/admin/leads',
+    });
+  }
+
+  res.json({
+    inserted,
+    found: found.length,
+    skipped: found.length - inserted,
+    blocked: !!blocked,
+    ran,
+    placesConfigured: placesConfigured(),
+    counts: counts(),
+    items: queries.listLeadsByStatus.all('new'),
+  });
 });
 
 // Manual add of a single lead from the admin UI.

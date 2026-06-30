@@ -63,6 +63,7 @@ export const api = {
 
   // leads (collected businesses awaiting review)
   listLeads: (status) => request(`/leads${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  collectLeads: (data) => request('/leads/collect', { method: 'POST', body: JSON.stringify(data) }),
   addLead: (data) => request('/leads', { method: 'POST', body: JSON.stringify(data) }),
   updateLead: (id, data) => request(`/leads/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   dismissLead: (id) => request(`/leads/${id}/dismiss`, { method: 'POST' }),

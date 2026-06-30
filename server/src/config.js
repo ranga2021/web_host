@@ -66,4 +66,9 @@ export const config = {
   unsubscribeUrl: process.env.UNSUBSCRIBE_URL || '',
   // Where admin notification emails go (defaults to the reply-to address).
   adminEmail: process.env.ADMIN_EMAIL || process.env.EMAIL_REPLY_TO || '',
+
+  // ---- Lead collection (the dashboard "Collect leads" button) ----
+  // Google Places API key. Optional: without it the collector falls back to
+  // the Yellow Pages scraper only (which Google/YP may rate-limit).
+  placesApiKey: process.env.PLACES_API_KEY || '',
 };

@@ -209,7 +209,7 @@ export default function Dashboard() {
       </div>
 
       {/* Find new projects */}
-      <FindProjects />
+      <FindProjects onCollected={load} />
 
       {/* Templates */}
       <h2 style={{ marginTop: 28 }}>Templates</h2>
@@ -320,9 +320,26 @@ function shortUrl(u) {
 /* ── lead-finding helper ───────────────────────────────────────────────── */
 const SECTOR_PRESETS = ['Restaurants', 'Dentists', 'Gyms', 'Law firms', 'Real estate agents', 'Plumbers', 'Cafes', 'Salons'];
 
-function FindProjects() {
+function FindProjects({ onCollected }) {
   const [sector, setSector] = useState('');
   const [location, setLocation] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const nav = useNavigate();
+
+  async function collect() {
+    if (!sector.trim()) return;
+    setBusy(true); setResult(null);
+    try {
+      const r = await api.collectLeads({ category: sector.trim(), location: location.trim() });
+      setResult(r);
+      onCollected?.();
+    } catch (e) {
+      setResult({ error: e.message });
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const q = [sector, location].filter(Boolean).join(' ').trim();
   const enc = encodeURIComponent;
@@ -339,7 +356,7 @@ function FindProjects() {
     <section className="card finder" style={{ marginTop: 20 }}>
       <div className="row between" style={{ alignItems: 'center', marginBottom: 4 }}>
         <h2 style={{ margin: 0 }}>🔭 Find new projects</h2>
-        <span className="muted" style={{ fontSize: 12 }}>build a prospecting search, then drop leads into your sheet</span>
+        <span className="muted" style={{ fontSize: 12 }}>collect leads automatically, or open a manual prospecting search</span>
       </div>
 
       <div className="row gap-sm" style={{ flexWrap: 'wrap', margin: '12px 0' }}>
@@ -365,6 +382,20 @@ function FindProjects() {
         </div>
       </div>
 
+      <div className="row gap-sm" style={{ alignItems: 'center', marginBottom: 14 }}>
+        <button className="btn primary" disabled={busy || !sector.trim()} onClick={collect}>
+          {busy ? 'Collecting…' : '🛰 Collect leads'}
+        </button>
+        {busy && <span className="muted" style={{ fontSize: 12 }}>searching directories…</span>}
+        {result && !result.error && (
+          <span style={{ fontSize: 13 }}>
+            {result.inserted > 0 ? `✓ Added ${result.inserted} new` : 'No new leads'}
+            {' · '}<Link to="/leads">View leads →</Link>
+          </span>
+        )}
+        {result?.error && <span className="error" style={{ margin: 0, padding: '4px 8px' }}>{result.error}</span>}
+      </div>
+
       {q ? (
         <div className="source-grid">
           {sources.map((s) => (
@@ -376,7 +407,7 @@ function FindProjects() {
         </div>
       ) : (
         <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-          Pick a niche above (or type one) and add a location to generate prospecting links.
+          Pick a category above (or type one) and a location, then <strong>Collect leads</strong> — or use the manual search links.
         </div>
       )}
     </section>

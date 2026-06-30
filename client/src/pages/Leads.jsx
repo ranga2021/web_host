@@ -5,6 +5,7 @@ const STATUSES = ['new', 'dismissed', 'all'];
 const STATUS_LABEL = { new: 'To review', dismissed: 'Dismissed', all: 'All' };
 
 const blankLead = { business: '', website: '', email: '', phone: '', category: '', region: '' };
+const CATEGORY_PRESETS = ['Restaurants', 'Dentists', 'Gyms', 'Law firms', 'Real estate agents', 'Plumbers', 'Cafes', 'Salons'];
 
 export default function Leads() {
   const [status, setStatus] = useState('new');
@@ -37,6 +38,8 @@ export default function Leads() {
       </p>
 
       {err && <div className="error">{err}</div>}
+
+      <CollectLeads onCollected={load} onError={setErr} />
 
       {adding && <AddLead onDone={() => { setAdding(false); load(); }} onError={setErr} />}
 
@@ -75,6 +78,77 @@ export default function Leads() {
         )}
       </div>
     </div>
+  );
+}
+
+function CollectLeads({ onCollected, onError }) {
+  const [category, setCategory] = useState('');
+  const [location, setLocation] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+
+  async function collect() {
+    if (!category.trim()) return;
+    setBusy(true); setResult(null); onError('');
+    try {
+      const r = await api.collectLeads({ category: category.trim(), location: location.trim() });
+      setResult(r);
+      await onCollected();
+    } catch (e) {
+      onError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="card finder">
+      <div className="row between" style={{ alignItems: 'center', marginBottom: 4 }}>
+        <h2 style={{ margin: 0 }}>🛰 Collect leads</h2>
+        <span className="muted" style={{ fontSize: 12 }}>pick a category &amp; location — we gather businesses for you</span>
+      </div>
+
+      <div className="row gap-sm" style={{ flexWrap: 'wrap', margin: '12px 0' }}>
+        {CATEGORY_PRESETS.map((c) => (
+          <button key={c} type="button" className={`chip ${category === c ? 'active' : ''}`} onClick={() => setCategory(c)}>{c}</button>
+        ))}
+      </div>
+
+      <div className="finder-grid" style={{ marginBottom: 12 }}>
+        <div className="field" style={{ margin: 0 }}>
+          <label>Category / niche</label>
+          <input className="input" placeholder="e.g. dentists" value={category} disabled={busy}
+            onChange={(e) => setCategory(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && collect()} />
+        </div>
+        <div className="field" style={{ margin: 0 }}>
+          <label>Location</label>
+          <input className="input" placeholder="e.g. Sydney NSW" value={location} disabled={busy}
+            onChange={(e) => setLocation(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && collect()} />
+        </div>
+      </div>
+
+      <div className="row gap-sm" style={{ alignItems: 'center' }}>
+        <button className="btn primary" disabled={busy || !category.trim()} onClick={collect}>
+          {busy ? 'Collecting…' : '🛰 Collect leads'}
+        </button>
+        {busy && <span className="muted" style={{ fontSize: 12 }}>searching directories — this can take a few seconds…</span>}
+      </div>
+
+      {result && (
+        <div className="card" style={{ marginTop: 12, background: 'var(--surface-2)', borderLeft: `3px solid ${result.inserted ? 'var(--success)' : 'var(--warn)'}` }}>
+          {result.inserted > 0
+            ? <strong>✓ Added {result.inserted} new lead{result.inserted === 1 ? '' : 's'}.</strong>
+            : <strong>No new leads added.</strong>}{' '}
+          <span className="muted">
+            {result.found} found, {result.skipped} already known.
+            {result.blocked && ' The Yellow Pages source was rate-limited (try again, or add a Places API key).'}
+            {!result.placesConfigured && ' Tip: set PLACES_API_KEY for far more reliable results.'}
+          </span>
+        </div>
+      )}
+    </section>
   );
 }
 
