@@ -12,8 +12,9 @@ if (fs.existsSync(envPath)) dotenv.config({ path: envPath });
 
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(`--${name}`);
+const opt = (name) => argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? null;
 const bool = (v, dflt) => (v == null || v === '' ? dflt : /^(1|true|yes|on)$/i.test(v));
-// First non-flag arg is the subcommand: 'generate' (default) | 'sync'.
+// First non-flag arg is the subcommand: 'generate' (default) | 'sync' | 'collect'.
 const command = argv.find((a) => !a.startsWith('--')) || 'generate';
 
 export const config = {
@@ -34,6 +35,15 @@ export const config = {
   sheetGid: process.env.SHEET_GID || '0',
   googleCredentialsFile: process.env.GOOGLE_APPLICATION_CREDENTIALS || '',
   googleCredentialsJson: process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '',
+
+  // Lead collection (`collect` command). CLI flags win over env.
+  //   node src/index.js collect --term="glass repair" --location="Sydney NSW" --source=yp --limit=20
+  collectSource: (opt('source') || process.env.COLLECT_SOURCE || 'yp').toLowerCase(), // yp | places | all
+  collectTerm: opt('term') || process.env.COLLECT_TERM || '',
+  collectLocation: opt('location') || process.env.COLLECT_LOCATION || '',
+  collectLimit: Number(opt('limit') || process.env.COLLECT_LIMIT || 25),
+  collectMaxPages: Number(opt('max-pages') || process.env.COLLECT_MAX_PAGES || 3),
+  placesApiKey: process.env.PLACES_API_KEY || '',
 
   // Claude
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
@@ -63,4 +73,5 @@ export const live = {
   sheetsWrite: !config.dryRun && !!(config.googleCredentialsFile || config.googleCredentialsJson),
   claude: !config.dryRun && !!config.anthropicApiKey,
   host: !config.dryRun && !!config.hostAdminPassword,
+  places: !!config.placesApiKey, // Google Places API key present → that source is usable
 };

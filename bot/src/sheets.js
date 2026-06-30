@@ -8,6 +8,20 @@ import { log } from './log.js';
 const MANAGED = ['Demo URL', 'Generated', 'Email Sent Date', 'Bot Status'];
 const FLAG_COL = 'Pitching Email Send'; // existing column we flip to TRUE
 
+// When the `collect` command appends a new lead, this maps each collected
+// field to the sheet header it belongs under (case-insensitive). Headers that
+// don't exist are skipped, so this stays safe if the sheet is renamed/reshaped.
+const COLLECT_MAP = {
+  business: 'Glass Company Name',
+  category: 'Company Type',
+  website: 'Website Link',
+  hasWebsite: 'Do they have a website',
+  region: 'States',
+  phone: 'Phone',
+  address: 'Address',
+  source: 'Lead Source',
+};
+
 // ── A1 helpers ──────────────────────────────────────────────────────────
 function colLetter(index0) {
   let n = index0 + 1, s = '';
@@ -112,11 +126,11 @@ async function makeLiveBackend() {
       }
       return out;
     },
-    async ensureColumns() {
+    async ensureColumns(names = MANAGED) {
       const grid = await readGrid();
       header = grid[0] || [];
       const updates = [];
-      for (const name of MANAGED) {
+      for (const name of names) {
         if (!header.some((h) => h.trim().toLowerCase() === name.toLowerCase())) {
           const idx = header.length;
           header = [...header, name];
@@ -130,6 +144,27 @@ async function makeLiveBackend() {
         });
         log.ok(`sheet: added columns ${updates.map((u) => u.values[0][0]).join(', ')}`);
       }
+    },
+    async appendBusinesses(records) {
+      if (!records.length) return 0;
+      await this.ensureColumns([...new Set(Object.values(COLLECT_MAP))]); // make sure target columns exist
+      const colOf = (name) => header.findIndex((h) => h.trim().toLowerCase() === name.toLowerCase());
+      const rows = records.map((rec) => {
+        const row = new Array(header.length).fill('');
+        for (const [field, headerName] of Object.entries(COLLECT_MAP)) {
+          const c = colOf(headerName);
+          if (c >= 0 && rec[field] != null && rec[field] !== '') row[c] = String(rec[field]);
+        }
+        return row;
+      });
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: config.sheetId,
+        range: tab,
+        valueInputOption: 'RAW',
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: { values: rows },
+      });
+      return rows.length;
     },
     async writeResult(rowNumber, fields) {
       const colOf = (name) => header.findIndex((h) => h.trim().toLowerCase() === name.toLowerCase());
@@ -174,17 +209,25 @@ async function makeDryBackend() {
       }
       return out;
     },
-    async ensureColumns() {
-      // Pretend-append managed columns so dry write logs look realistic.
-      for (const name of MANAGED) {
+    async ensureColumns(names = MANAGED) {
+      // Pretend-append columns so dry write logs look realistic.
+      for (const name of names) {
         if (!header.some((h) => h.trim().toLowerCase() === name.toLowerCase())) header.push(name);
       }
-      log.info(`sheet (dry): would ensure columns: ${MANAGED.join(', ')}`);
+      log.info(`sheet (dry): would ensure columns: ${names.join(', ')}`);
     },
     async writeResult(rowNumber, fields) {
       await fsp.mkdir(config.dryRunDir, { recursive: true });
       const line = JSON.stringify({ rowNumber, ...fields }) + '\n';
       await fsp.appendFile(path.join(config.dryRunDir, 'sheet-writes.jsonl'), line);
+    },
+    async appendBusinesses(records) {
+      if (!records.length) return 0;
+      await fsp.mkdir(config.dryRunDir, { recursive: true });
+      const lines = records.map((r) => JSON.stringify(r)).join('\n') + '\n';
+      await fsp.appendFile(path.join(config.dryRunDir, 'collected-leads.jsonl'), lines);
+      log.info(`sheet (dry): would append ${records.length} lead(s) → bot/_dryrun/collected-leads.jsonl`);
+      return records.length;
     },
   };
 }

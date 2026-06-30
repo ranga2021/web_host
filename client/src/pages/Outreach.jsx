@@ -25,7 +25,7 @@ export default function Outreach() {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div>
+    <div className="container">
       <div className="row between" style={{ alignItems: 'center', marginBottom: 16 }}>
         <h1 style={{ margin: 0 }}>Review queue</h1>
       </div>
@@ -50,8 +50,8 @@ export default function Outreach() {
 
       <div className="row" style={{ gap: 16, alignItems: 'flex-start' }}>
         <div style={{ flex: '0 0 280px' }}>
-          {loading && <div className="muted">Loading…</div>}
-          {!loading && data.items.length === 0 && <div className="muted">Nothing here.</div>}
+          {loading && <div className="card muted">Loading…</div>}
+          {!loading && data.items.length === 0 && <div className="card muted">Nothing here.</div>}
           {data.items.map((o) => (
             <button
               key={o.id}

@@ -8,6 +8,9 @@
   "scripts": {
     "run": "node src/index.js",
     "dry-run": "node src/index.js --dry-run",
+    "collect": "node src/index.js collect",
+    "collect:dry": "node src/index.js collect --dry-run",
+    "sync": "node src/index.js sync",
     "check": "node test/checks.mjs"
   },
   "dependencies": {

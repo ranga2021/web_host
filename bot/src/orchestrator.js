@@ -113,5 +113,9 @@ export async function runSync() {
 }
 
 export async function run() {
+  if (config.command === 'collect') {
+    const { runCollect } = await import('./collect.js');
+    return runCollect();
+  }
   return config.command === 'sync' ? runSync() : runGenerate();
 }
