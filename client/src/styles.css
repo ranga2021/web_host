@@ -472,6 +472,135 @@ pre.log {
 }
 
 /* ============================================================
+   DASHBOARD — AI suggestions, pipeline, lead finder
+   ============================================================ */
+
+/* AI suggestions */
+.insights {
+  background:
+    radial-gradient(600px 220px at 100% -40%, rgba(99,102,241,0.07), transparent 70%),
+    var(--surface);
+}
+.suggestion-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.suggestion {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--muted-2);
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 13.5px;
+}
+.suggestion .s-icon { font-size: 16px; line-height: 1; flex-shrink: 0; }
+.suggestion .s-text { flex: 1; min-width: 0; }
+.suggestion .s-cta { flex-shrink: 0; padding: 5px 11px; font-size: 12.5px; }
+.suggestion.good   { border-left-color: var(--success); }
+.suggestion.warn   { border-left-color: var(--warn); background: var(--warn-soft); }
+.suggestion.danger { border-left-color: var(--danger); background: var(--danger-soft); }
+.suggestion.info   { border-left-color: var(--primary); }
+
+/* Pipeline panels (upcoming / sent) */
+.pipe-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.panel-head h2 { font-size: 14px; }
+.count-pill {
+  background: var(--surface-3);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+.lead-list { list-style: none; margin: 0; padding: 0; }
+.lead-list li {
+  padding: 11px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.lead-list li:last-child { border-bottom: none; }
+.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.views-pill {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--info-text);
+  background: var(--info-soft);
+  padding: 1px 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.opened { color: var(--success-text); font-weight: 600; }
+.panel-more {
+  display: block;
+  text-align: center;
+  padding: 11px;
+  font-size: 13px;
+  font-weight: 600;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+/* Lead finder */
+.chip {
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 5px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.12s ease;
+}
+.chip:hover { background: var(--surface-3); }
+.chip.active {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary-text);
+}
+.finder-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+.source {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.source:hover { border-color: var(--primary); box-shadow: var(--shadow-sm); text-decoration: none; }
+.source strong { font-size: 13.5px; color: var(--text); }
+.source .muted { font-size: 11.5px; line-height: 1.4; }
+
+@media (max-width: 560px) {
+  .finder-grid { grid-template-columns: 1fr; }
+  .suggestion { flex-wrap: wrap; }
+  .suggestion .s-cta { margin-left: 28px; }
+}
+
+/* ============================================================
    RESPONSIVE
    ============================================================ */
 

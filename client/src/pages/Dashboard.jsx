@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 
@@ -6,19 +6,22 @@ export default function Dashboard() {
   const [demos, setDemos] = useState(null);
   const [tenants, setTenants] = useState([]);
   const [inquiriesCount, setInquiriesCount] = useState(null);
+  const [outreach, setOutreach] = useState({ items: [], counts: {}, emailConfigured: true });
   const [err, setErr] = useState('');
   const nav = useNavigate();
 
   async function load() {
     try {
-      const [d, t, inq] = await Promise.all([
+      const [d, t, inq, out] = await Promise.all([
         api.listDemos(),
         api.listTenants().catch(() => []),
         api.listInquiries().catch(() => ({ counts: {}, inquiries: [] })),
+        api.listOutreach().catch(() => ({ items: [], counts: {}, emailConfigured: true })),
       ]);
       setDemos(d);
       setTenants(t);
       setInquiriesCount(inq.inquiries?.length || 0);
+      setOutreach(out);
     } catch (e) {
       setErr(e.message);
     }
@@ -39,6 +42,20 @@ export default function Dashboard() {
     }
   }
 
+  const items = outreach.items || [];
+  const upcoming = useMemo(
+    () => items.filter((o) => o.status === 'draft' || o.status === 'failed'),
+    [items],
+  );
+  const sent = useMemo(
+    () => items.filter((o) => o.status === 'sent'),
+    [items],
+  );
+  const suggestions = useMemo(
+    () => buildSuggestions(items, inquiriesCount, outreach.emailConfigured),
+    [items, inquiriesCount, outreach.emailConfigured],
+  );
+
   if (!demos) return <div className="container muted">Loading…</div>;
 
   const totalViews = demos.reduce((acc, d) => acc + (d.views?.total || 0), 0)
@@ -48,8 +65,11 @@ export default function Dashboard() {
   return (
     <div className="container">
       <div className="row between" style={{ marginBottom: 18 }}>
-        <h1>Templates</h1>
-        <button className="btn primary" onClick={() => nav('/new')}>+ New template</button>
+        <h1>Dashboard</h1>
+        <div className="row gap-sm">
+          <button className="btn" onClick={() => nav('/outreach')}>Review queue</button>
+          <button className="btn primary" onClick={() => nav('/new')}>+ New template</button>
+        </div>
       </div>
 
       {/* Summary tiles */}
@@ -60,9 +80,18 @@ export default function Dashboard() {
           <div className="sub">{readyCount} live</div>
         </div>
         <div className="stat">
-          <div className="label">Tenants</div>
-          <div className="value">{tenants.length}</div>
-          <div className="sub">{tenants.filter((t) => t.enabled).length} enabled</div>
+          <div className="label">Pipeline</div>
+          <div className="value">{upcoming.length}</div>
+          <div className="sub">
+            {upcoming.length > 0
+              ? <Link to="/outreach">awaiting review →</Link>
+              : 'nothing queued'}
+          </div>
+        </div>
+        <div className="stat">
+          <div className="label">Emails sent</div>
+          <div className="value">{sent.length}</div>
+          <div className="sub">{sumViews(sent).toLocaleString()} demo views</div>
         </div>
         <div className="stat">
           <div className="label">Total views</div>
@@ -82,6 +111,73 @@ export default function Dashboard() {
 
       {err && <div className="error">{err}</div>}
 
+      {/* AI suggestions */}
+      <section className="card insights" style={{ marginBottom: 20 }}>
+        <div className="row between" style={{ alignItems: 'center', marginBottom: 4 }}>
+          <h2 style={{ margin: 0 }}>✨ AI suggestions</h2>
+          <span className="muted" style={{ fontSize: 12 }}>next best actions for your pipeline</span>
+        </div>
+        <div className="suggestion-list">
+          {suggestions.map((s, i) => (
+            <div key={i} className={`suggestion ${s.tone}`}>
+              <span className="s-icon">{s.icon}</span>
+              <span className="s-text">{s.text}</span>
+              {s.to && <Link className="btn s-cta" to={s.to}>{s.cta} →</Link>}
+              {s.href && <a className="btn s-cta" href={s.href} target="_blank" rel="noreferrer">{s.cta} →</a>}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Outbound pipeline: upcoming + sent */}
+      <div className="pipe-grid">
+        <OutreachPanel
+          title="Next up — pending review"
+          empty="No drafts queued. Generate demos with the bot, or add leads to your sheet."
+          items={upcoming}
+          emptyCta={{ to: '/outreach', label: 'Open review queue' }}
+          render={(o) => (
+            <>
+              <div className="row between">
+                <strong className="ellipsis">{o.business}</strong>
+                <StatusDot status={o.status} />
+              </div>
+              <div className="mono muted ellipsis" style={{ fontSize: 12 }}>{o.email_to}</div>
+              <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>
+                drafted {relativeTime(o.generated_at || o.created_at)}
+              </div>
+            </>
+          )}
+        />
+
+        <OutreachPanel
+          title="Already sent"
+          empty="No emails sent yet. Approve a draft to send your first pitch."
+          items={sent}
+          emptyCta={{ to: '/outreach', label: 'Open review queue' }}
+          render={(o) => (
+            <>
+              <div className="row between">
+                <strong className="ellipsis">{o.business}</strong>
+                <span className="views-pill" title="real demo views">
+                  👁 {o.view_count || 0}
+                </span>
+              </div>
+              <div className="mono muted ellipsis" style={{ fontSize: 12 }}>{o.email_to}</div>
+              <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>
+                sent {relativeTime(o.sent_at)}
+                {o.view_count > 0 && <span className="opened"> · opened</span>}
+              </div>
+            </>
+          )}
+        />
+      </div>
+
+      {/* Find new projects */}
+      <FindProjects />
+
+      {/* Templates */}
+      <h2 style={{ marginTop: 28 }}>Templates</h2>
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         {demos.length === 0 ? (
           <div className="empty">
@@ -148,6 +244,192 @@ export default function Dashboard() {
       </div>
     </div>
   );
+}
+
+/* ── outreach list panel (upcoming / sent) ─────────────────────────────── */
+function OutreachPanel({ title, items, render, empty, emptyCta }) {
+  const shown = items.slice(0, 6);
+  return (
+    <section className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div className="panel-head">
+        <h2 style={{ margin: 0 }}>{title}</h2>
+        <span className="count-pill">{items.length}</span>
+      </div>
+      {items.length === 0 ? (
+        <div className="empty" style={{ padding: '32px 20px' }}>
+          {empty}
+          {emptyCta && <div style={{ marginTop: 10 }}><Link className="btn" to={emptyCta.to}>{emptyCta.label}</Link></div>}
+        </div>
+      ) : (
+        <>
+          <ul className="lead-list">
+            {shown.map((o) => (
+              <li key={o.id}>{render(o)}</li>
+            ))}
+          </ul>
+          {items.length > shown.length && (
+            <Link className="panel-more" to="/outreach">
+              View all {items.length} →
+            </Link>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+/* ── lead-finding helper ───────────────────────────────────────────────── */
+const SECTOR_PRESETS = ['Restaurants', 'Dentists', 'Gyms', 'Law firms', 'Real estate agents', 'Plumbers', 'Cafes', 'Salons'];
+
+function FindProjects() {
+  const [sector, setSector] = useState('');
+  const [location, setLocation] = useState('');
+
+  const q = [sector, location].filter(Boolean).join(' ').trim();
+  const enc = encodeURIComponent;
+  const sources = q
+    ? [
+        { label: 'Google Maps', hint: 'Local businesses — note the ones with no website', href: `https://www.google.com/maps/search/${enc(q)}` },
+        { label: 'No-website leads', hint: 'Maps listings missing a site = warmest leads', href: `https://www.google.com/maps/search/${enc(q + ' no website')}` },
+        { label: 'LinkedIn', hint: 'Find owners & decision-makers', href: `https://www.linkedin.com/search/results/companies/?keywords=${enc(q)}` },
+        { label: 'Yellow Pages', hint: 'Bulk listings with phone & address', href: `https://www.yellowpages.com/search?search_terms=${enc(sector || q)}&geo_location_terms=${enc(location)}` },
+      ]
+    : [];
+
+  return (
+    <section className="card finder" style={{ marginTop: 20 }}>
+      <div className="row between" style={{ alignItems: 'center', marginBottom: 4 }}>
+        <h2 style={{ margin: 0 }}>🔭 Find new projects</h2>
+        <span className="muted" style={{ fontSize: 12 }}>build a prospecting search, then drop leads into your sheet</span>
+      </div>
+
+      <div className="row gap-sm" style={{ flexWrap: 'wrap', margin: '12px 0' }}>
+        {SECTOR_PRESETS.map((s) => (
+          <button
+            key={s}
+            className={`chip ${sector === s ? 'active' : ''}`}
+            onClick={() => setSector(s)}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+
+      <div className="finder-grid">
+        <div className="field" style={{ margin: 0 }}>
+          <label>Business type / niche</label>
+          <input className="input" placeholder="e.g. dentists" value={sector} onChange={(e) => setSector(e.target.value)} />
+        </div>
+        <div className="field" style={{ margin: 0 }}>
+          <label>Location</label>
+          <input className="input" placeholder="e.g. Melbourne" value={location} onChange={(e) => setLocation(e.target.value)} />
+        </div>
+      </div>
+
+      {q ? (
+        <div className="source-grid">
+          {sources.map((s) => (
+            <a key={s.label} className="source" href={s.href} target="_blank" rel="noreferrer">
+              <strong>{s.label}</strong>
+              <span className="muted">{s.hint}</span>
+            </a>
+          ))}
+        </div>
+      ) : (
+        <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+          Pick a niche above (or type one) and add a location to generate prospecting links.
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* ── AI suggestion engine (data-driven next-best-actions) ──────────────── */
+function buildSuggestions(items, inquiriesCount, emailConfigured) {
+  const out = [];
+  const drafts = items.filter((o) => o.status === 'draft');
+  const failed = items.filter((o) => o.status === 'failed');
+  const sent = items.filter((o) => o.status === 'sent');
+  const opened = sent.filter((o) => (o.view_count || 0) > 0);
+  const cold = sent.filter((o) => (o.view_count || 0) === 0 && daysSince(o.sent_at) >= 3);
+  const staleDrafts = drafts.filter((o) => daysSince(o.generated_at || o.created_at) >= 2);
+
+  if (emailConfigured === false) {
+    out.push({
+      tone: 'warn', icon: '⚠️',
+      text: 'No email provider is configured — approvals will mark demos sent but nothing will actually go out. Add a RESEND_API_KEY.',
+      to: '/settings', cta: 'Settings',
+    });
+  }
+  if (failed.length) {
+    out.push({
+      tone: 'danger', icon: '🔁',
+      text: `${failed.length} email${failed.length === 1 ? '' : 's'} failed to send. Re-check the address and retry from the review queue.`,
+      to: '/outreach', cta: 'Fix & retry',
+    });
+  }
+  if (staleDrafts.length) {
+    out.push({
+      tone: 'warn', icon: '⏳',
+      text: `${staleDrafts.length} draft${staleDrafts.length === 1 ? ' has' : 's have'} been waiting 2+ days. Approve them while the leads are still warm.`,
+      to: '/outreach', cta: 'Review now',
+    });
+  } else if (drafts.length) {
+    out.push({
+      tone: 'info', icon: '📨',
+      text: `${drafts.length} demo${drafts.length === 1 ? '' : 's'} ready for review. A quick approve sends the pitch and publishes the site.`,
+      to: '/outreach', cta: 'Review',
+    });
+  }
+  if (opened.length) {
+    const hot = [...opened].sort((a, b) => (b.view_count || 0) - (a.view_count || 0))[0];
+    out.push({
+      tone: 'good', icon: '🔥',
+      text: `${hot.business} opened their demo ${hot.view_count} time${hot.view_count === 1 ? '' : 's'}${opened.length > 1 ? ` (and ${opened.length - 1} other prospect${opened.length - 1 === 1 ? '' : 's'} are engaging)` : ''} — follow up while you're top of mind.`,
+      to: '/outreach', cta: 'See engagement',
+    });
+  }
+  if (cold.length) {
+    out.push({
+      tone: 'info', icon: '💤',
+      text: `${cold.length} sent demo${cold.length === 1 ? '' : 's'} ${cold.length === 1 ? 'has' : 'have'} not been opened in 3+ days. A short follow-up nudge usually doubles open rates.`,
+      to: '/outreach', cta: 'View sent',
+    });
+  }
+  if (drafts.length === 0 && sent.length === 0) {
+    out.push({
+      tone: 'info', icon: '🌱',
+      text: 'Your outreach pipeline is empty. Add prospects to your lead sheet (or use Find new projects below) and run the generator.',
+      href: '#', cta: 'Find leads',
+    });
+  } else if (drafts.length < 3) {
+    out.push({
+      tone: 'info', icon: '➕',
+      text: 'Pipeline is running low. Line up more prospects so the generator has fresh businesses to draft tomorrow.',
+    });
+  }
+
+  if (out.length === 0) {
+    out.push({ tone: 'good', icon: '✅', text: "You're all caught up — no pending actions in the pipeline." });
+  }
+  return out.slice(0, 5);
+}
+
+/* ── small presentational helpers ──────────────────────────────────────── */
+function StatusDot({ status }) {
+  const map = { draft: ['#b45309', 'pending'], failed: ['#b91c1c', 'failed'] };
+  const [color, label] = map[status] || ['#6b7280', status];
+  return <span style={{ fontSize: 11, fontWeight: 700, color, textTransform: 'uppercase' }}>{label}</span>;
+}
+
+function sumViews(list) {
+  return list.reduce((a, o) => a + (o.view_count || 0), 0);
+}
+
+function daysSince(iso) {
+  if (!iso) return 0;
+  const then = new Date(iso.replace(' ', 'T') + 'Z').getTime();
+  return (Date.now() - then) / 86_400_000;
 }
 
 function relativeTime(iso) {
