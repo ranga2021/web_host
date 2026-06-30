@@ -53,4 +53,17 @@ export const config = {
   publicBaseUrl: (process.env.PUBLIC_BASE_URL || 'http://localhost:3001').replace(/\/$/, ''),
   dbPath: path.resolve(process.env.DB_PATH || './data.db'),
   buildConcurrency: Number(process.env.BUILD_CONCURRENCY || 1),
+
+  // ---- Email (outreach send on approval + admin notifications) ----
+  // All optional: with no RESEND_API_KEY the server runs dashboard-only
+  // (emails are logged, not sent) so nothing breaks before you wire Resend.
+  resendApiKey: process.env.RESEND_API_KEY || '',
+  emailFrom: process.env.EMAIL_FROM || 'Demo <demo@example.com>',
+  emailReplyTo: process.env.EMAIL_REPLY_TO || '',
+  senderName: process.env.SENDER_NAME || 'The Team',
+  senderCompany: process.env.SENDER_COMPANY || '',
+  senderAddress: process.env.SENDER_ADDRESS || '',
+  unsubscribeUrl: process.env.UNSUBSCRIBE_URL || '',
+  // Where admin notification emails go (defaults to the reply-to address).
+  adminEmail: process.env.ADMIN_EMAIL || process.env.EMAIL_REPLY_TO || '',
 };

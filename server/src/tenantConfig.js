@@ -20,6 +20,8 @@ const EMPTY_CONFIG = Object.freeze({
   products: [],
   testimonials: [],
   stats: [],
+  about: {},
+  faqs: [],
   footer: {},
   meta: {},
 });
@@ -87,6 +89,18 @@ export function normalizeConfig(input) {
     cfg.stats = input.stats.slice(0, 12).map((s) => ({
       value: asString(s?.value),
       label: asString(s?.label),
+    }));
+  }
+  if (input.about && typeof input.about === 'object') {
+    cfg.about = {
+      heading: asString(input.about.heading),
+      body:    asString(input.about.body),
+    };
+  }
+  if (Array.isArray(input.faqs)) {
+    cfg.faqs = input.faqs.slice(0, 30).map((f) => ({
+      q: asString(f?.q),
+      a: asString(f?.a),
     }));
   }
   if (input.footer && typeof input.footer === 'object') {

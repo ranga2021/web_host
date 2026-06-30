@@ -106,6 +106,46 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_page_views_kind_id ON page_views(source_kind, source_id);
   CREATE INDEX IF NOT EXISTS idx_page_views_slug    ON page_views(source_slug);
   CREATE INDEX IF NOT EXISTS idx_page_views_created ON page_views(created_at DESC);
+
+  -- One row per auto-generated outreach draft (a demo awaiting admin review).
+  -- The bot creates these (status 'draft') with a DISABLED tenant; the admin
+  -- reviews/edits in the dashboard and approves → tenant enabled + email sent.
+  CREATE TABLE IF NOT EXISTS outreach (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id      INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    sheet_row      INTEGER,                       -- Google Sheet row number, for write-back
+    business       TEXT NOT NULL,
+    email_to       TEXT NOT NULL,
+    email_subject  TEXT NOT NULL,
+    email_body     TEXT NOT NULL,                 -- editable plain-text body (includes the demo URL)
+    demo_url       TEXT NOT NULL,
+    status         TEXT NOT NULL DEFAULT 'draft', -- draft | approved | sent | rejected | failed
+    error          TEXT,
+    view_count     INTEGER NOT NULL DEFAULT 0,    -- real (non-bot) views after the email was sent
+    first_view_at  TEXT,
+    viewed_notified  INTEGER NOT NULL DEFAULT 0,  -- sent the "viewed" notification yet?
+    engaged_notified INTEGER NOT NULL DEFAULT 0,  -- sent the "engaged" notification yet?
+    sheet_synced   INTEGER NOT NULL DEFAULT 0,    -- has the bot written the sent status back to the sheet?
+    generated_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    sent_at        TEXT,
+    created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_outreach_status ON outreach(status, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_outreach_tenant ON outreach(tenant_id);
+
+  -- In-dashboard notification feed (also emailed to the admin per settings).
+  CREATE TABLE IF NOT EXISTS notifications (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind        TEXT NOT NULL,    -- drafts_ready | demo_viewed | demo_engaged | email_sent
+    title       TEXT NOT NULL,
+    body        TEXT,
+    link        TEXT,             -- in-app link, e.g. /admin/outreach/123
+    read        INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_notifications_unread  ON notifications(read, created_at DESC);
 `);
 
 // Cap the page_views table at a sensible size so a high-traffic deployment
@@ -310,4 +350,48 @@ export const queries = {
     ORDER BY id DESC
     LIMIT ?
   `),
+
+  // ---- outreach (review queue) ----
+  insertOutreach: db.prepare(`
+    INSERT INTO outreach (tenant_id, sheet_row, business, email_to, email_subject, email_body, demo_url)
+    VALUES (@tenant_id, @sheet_row, @business, @email_to, @email_subject, @email_body, @demo_url)
+  `),
+  listOutreach: db.prepare(`SELECT * FROM outreach ORDER BY created_at DESC LIMIT 500`),
+  listOutreachByStatus: db.prepare(`SELECT * FROM outreach WHERE status = ? ORDER BY created_at DESC LIMIT 500`),
+  getOutreach: db.prepare(`SELECT * FROM outreach WHERE id = ?`),
+  getOutreachByTenant: db.prepare(`SELECT * FROM outreach WHERE tenant_id = ?`),
+  updateOutreachEmail: db.prepare(`
+    UPDATE outreach SET email_subject = @email_subject, email_body = @email_body, updated_at = datetime('now')
+    WHERE id = @id
+  `),
+  setOutreachStatus: db.prepare(`
+    UPDATE outreach SET status = @status, error = @error, sent_at = COALESCE(@sent_at, sent_at), updated_at = datetime('now')
+    WHERE id = @id
+  `),
+  countOutreachByStatus: db.prepare(`SELECT status, COUNT(*) AS n FROM outreach GROUP BY status`),
+  // View tracking: bump count, stamp first view, return the fresh row.
+  bumpOutreachView: db.prepare(`
+    UPDATE outreach
+       SET view_count = view_count + 1,
+           first_view_at = COALESCE(first_view_at, datetime('now')),
+           updated_at = datetime('now')
+     WHERE id = ?
+  `),
+  markOutreachViewedNotified:  db.prepare(`UPDATE outreach SET viewed_notified = 1 WHERE id = ?`),
+  markOutreachEngagedNotified: db.prepare(`UPDATE outreach SET engaged_notified = 1 WHERE id = ?`),
+  // Sheet write-back sync (consumed by the bot's `sync` command).
+  listOutreachNeedingSync: db.prepare(`
+    SELECT * FROM outreach WHERE status = 'sent' AND sheet_synced = 0 AND sheet_row IS NOT NULL
+    ORDER BY created_at ASC LIMIT 200
+  `),
+  markOutreachSheetSynced: db.prepare(`UPDATE outreach SET sheet_synced = 1 WHERE id = ?`),
+
+  // ---- notifications ----
+  insertNotification: db.prepare(`
+    INSERT INTO notifications (kind, title, body, link) VALUES (@kind, @title, @body, @link)
+  `),
+  listNotifications: db.prepare(`SELECT * FROM notifications ORDER BY created_at DESC LIMIT 100`),
+  countUnreadNotifications: db.prepare(`SELECT COUNT(*) AS n FROM notifications WHERE read = 0`),
+  markNotificationRead: db.prepare(`UPDATE notifications SET read = 1 WHERE id = ?`),
+  markAllNotificationsRead: db.prepare(`UPDATE notifications SET read = 1 WHERE read = 0`),
 };

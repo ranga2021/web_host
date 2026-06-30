@@ -1,0 +1,19 @@
+{
+  "name": "web-host-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Reads businesses from a Google Sheet, generates a website with Claude, deploys a demo as a web_host tenant, emails the owner, and updates the sheet.",
+  "main": "src/index.js",
+  "scripts": {
+    "run": "node src/index.js",
+    "dry-run": "node src/index.js --dry-run",
+    "check": "node test/checks.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "dotenv": "^16.4.5",
+    "googleapis": "^144.0.0",
+    "resend": "^4.0.1"
+  }
+}

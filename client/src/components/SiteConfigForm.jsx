@@ -16,6 +16,8 @@ export const BLANK_SITE_CONFIG = {
   products:    [],
   testimonials:[],
   stats:       [],
+  about:       { heading: '', body: '' },
+  faqs:        [],
   footer:      { copyright: '', tagline: '' },
   meta:        { title: '', description: '' },
 };
@@ -49,6 +51,11 @@ export default function SiteConfigForm({ value, onChange, uploadFile, uploads, o
   function setStats(updater) {
     const next = structuredClone(cfg);
     next.stats = updater(next.stats || []);
+    onChange(next);
+  }
+  function setFaqs(updater) {
+    const next = structuredClone(cfg);
+    next.faqs = updater(next.faqs || []);
     onChange(next);
   }
 
@@ -331,6 +338,41 @@ export default function SiteConfigForm({ value, onChange, uploadFile, uploads, o
             >
               Remove
             </button>
+          </div>
+        ))}
+      </section>
+
+      {/* ABOUT */}
+      <section className="card" style={{ marginBottom: 16 }}>
+        <h2 style={{ marginTop: 0 }}>About</h2>
+        <Text label="Heading" value={cfg.about?.heading} onChange={(v) => setCfg('about.heading', v)} />
+        <Text label="Body" value={cfg.about?.body} onChange={(v) => setCfg('about.body', v)} multiline />
+        <div className="muted" style={{ fontSize: 12.5 }}>Separate paragraphs with a blank line.</div>
+      </section>
+
+      {/* FAQS */}
+      <section className="card" style={{ marginBottom: 16 }}>
+        <div className="row between">
+          <h2 style={{ margin: 0 }}>FAQs</h2>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setFaqs((arr) => [...arr, { q: '', a: '' }])}
+          >
+            + Add FAQ
+          </button>
+        </div>
+        {(cfg.faqs || []).length === 0 && (
+          <div className="muted" style={{ marginTop: 12 }}>No FAQs configured.</div>
+        )}
+        {(cfg.faqs || []).map((f, i) => (
+          <div key={i} className="card" style={{ background: 'var(--surface-2, #f9fafc)', marginTop: 12 }}>
+            <div className="row between">
+              <strong>FAQ #{i + 1}</strong>
+              <button type="button" className="btn danger" onClick={() => setFaqs((arr) => arr.filter((_, idx) => idx !== i))}>Remove</button>
+            </div>
+            <Text label="Question" value={f.q} onChange={(v) => setFaqs((arr) => arr.map((x, idx) => idx === i ? { ...x, q: v } : x))} />
+            <Text label="Answer" value={f.a} multiline onChange={(v) => setFaqs((arr) => arr.map((x, idx) => idx === i ? { ...x, a: v } : x))} />
           </div>
         ))}
       </section>

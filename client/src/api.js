@@ -54,6 +54,19 @@ export const api = {
   getSettings: () => request('/settings'),
   updateSettings: (data) => request('/settings', { method: 'PUT', body: JSON.stringify(data) }),
 
+  // outreach (review queue)
+  listOutreach: (status) => request(`/outreach${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  getOutreach: (id) => request(`/outreach/${id}`),
+  updateOutreach: (id, data) => request(`/outreach/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  approveOutreach: (id) => request(`/outreach/${id}/approve`, { method: 'POST' }),
+  rejectOutreach: (id) => request(`/outreach/${id}/reject`, { method: 'POST' }),
+
+  // notifications
+  listNotifications: () => request('/notifications'),
+  notificationsUnread: () => request('/notifications/unread-count'),
+  readNotification: (id) => request(`/notifications/${id}/read`, { method: 'POST' }),
+  readAllNotifications: () => request('/notifications/read-all', { method: 'POST' }),
+
   // inquiries (admin views)
   listInquiries: () => request('/inquiries'),
   getInquiry: (id) => request(`/inquiries/${id}`),

@@ -5,6 +5,11 @@ import path from 'node:path';
 import { config } from './config.js';
 import { queries } from './db.js';
 import { serializeForScript } from './tenantConfig.js';
+import { isAdmin } from './auth.js';
+import { notify } from './notify.js';
+
+// A sent demo crossing this many real visits flips from "viewed" → "engaged".
+const ENGAGED_THRESHOLD = 4;
 
 const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
 const RESERVED = new Set([
@@ -54,14 +59,21 @@ export function demoServerMiddleware() {
 
     // Tenant lookup first; if found, also resolve its template's files dir.
     const tenant = queries.getTenantBySlug(slug);
+    const admin = isAdmin(req);
     let filesDir;
     let activeTenant = null;
     let activeDemo = null;
     let templateSlug = null;
     let templateDefaults = {};
+    let previewMode = false; // serving a DISABLED tenant to a logged-in admin
 
     if (tenant) {
-      if (!tenant.enabled) return next();
+      // Disabled tenants 404 for the public, but a logged-in admin may PREVIEW
+      // them (this is how the dashboard reviews not-yet-approved demos).
+      if (!tenant.enabled) {
+        if (!admin) return next();
+        previewMode = true;
+      }
       const template = queries.getDemoById.get(tenant.template_id);
       if (!template) return next();
       filesDir = path.join(config.demosDir, template.slug);
@@ -156,11 +168,14 @@ export function demoServerMiddleware() {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
 
     // Track this view (HTML serves only — assets above don't count).  Best-
-    // effort: failures here never block the page response.
-    try { recordView(req, activeTenant ? 'tenant' : 'template',
-                     activeTenant ? activeTenant.id : (activeDemo?.id ?? null),
-                     slug); }
-    catch (e) { console.error('[demoServer] view-track failed:', e); }
+    // effort: failures here never block the page response.  Admin previews are
+    // never counted as prospect engagement.
+    if (!admin && !previewMode) {
+      try { recordView(req, activeTenant ? 'tenant' : 'template',
+                       activeTenant ? activeTenant.id : (activeDemo?.id ?? null),
+                       slug); }
+      catch (e) { console.error('[demoServer] view-track failed:', e); }
+    }
 
     try {
       const html = await fsp.readFile(indexPath, 'utf8');
@@ -207,6 +222,10 @@ export function demoServerMiddleware() {
       const tenantCustomCss = activeTenant?.custom_css || null;
       out = injectCustomCss(out, templateCustomCss, tenantCustomCss);
 
+      // Admin previewing a not-yet-approved demo: stamp a clear banner so it's
+      // never mistaken for the live, sent version.
+      if (previewMode) out = injectPreviewBanner(out);
+
       return res.send(out);
     } catch (err) {
       console.error('[demoServer] inject failed:', err);
@@ -234,6 +253,29 @@ function recordView(req, kind, id, slug) {
   const referer = (req.get('referer') || '').slice(0, 500) || null;
   const ip      = (req.ip || '').slice(0, 64) || null;
   queries.recordView.run(kind, id, slug, referer, ua.slice(0, 500), ip);
+
+  // If this slug is a SENT outreach demo, surface the engagement to the admin.
+  if (kind === 'tenant' && id) {
+    try { maybeNotifyEngagement(id); } catch (e) { console.error('[demoServer] engagement notify failed:', e); }
+  }
+}
+
+// First real visit → "viewed"; crossing ENGAGED_THRESHOLD visits → "engaged".
+// Each milestone notifies at most once (flags on the outreach row).
+function maybeNotifyEngagement(tenantId) {
+  const o = queries.getOutreachByTenant.get(tenantId);
+  if (!o || o.status !== 'sent') return;
+  queries.bumpOutreachView.run(o.id);
+  const fresh = queries.getOutreach.get(o.id);
+  if (!fresh.viewed_notified) {
+    queries.markOutreachViewedNotified.run(o.id);
+    notify({ kind: 'demo_viewed', title: `${fresh.business} viewed their demo`,
+      body: `First visit to ${fresh.demo_url}`, link: '/admin/outreach' });
+  } else if (!fresh.engaged_notified && fresh.view_count >= ENGAGED_THRESHOLD) {
+    queries.markOutreachEngagedNotified.run(o.id);
+    notify({ kind: 'demo_engaged', title: `${fresh.business} is engaged 👀`,
+      body: `${fresh.view_count} visits to ${fresh.demo_url}`, link: '/admin/outreach' });
+  }
 }
 
 function escapeAttr(s) {
@@ -463,6 +505,18 @@ function injectCustomCss(html, templateCss, tenantCss) {
 // escape that the CSS parser still tolerates.
 function cssSafe(s) {
   return String(s).replace(/<\/style/gi, '<\\/style');
+}
+
+// Fixed banner shown only when a logged-in admin previews a DISABLED demo.
+function injectPreviewBanner(html) {
+  const banner =
+    `<div style="position:fixed;top:0;left:0;right:0;z-index:2147483647;` +
+    `background:#b45309;color:#fff;font:600 13px/1.4 -apple-system,Segoe UI,Roboto,Arial,sans-serif;` +
+    `text-align:center;padding:8px 12px;box-shadow:0 1px 4px rgba(0,0,0,.2)">` +
+    `🔒 PREVIEW — this demo is not live yet. Approve it in the dashboard to publish and send the email.` +
+    `</div><div style="height:34px"></div>`;
+  if (/<body[^>]*>/i.test(html)) return html.replace(/<body[^>]*>/i, (m) => m + banner);
+  return banner + html;
 }
 
 function injectClaimWidget(html, source) {

@@ -10,6 +10,8 @@ import demoRoutes from './routes/demos.js';
 import tenantRoutes from './routes/tenants.js';
 import inquiryRoutes from './routes/inquiries.js';
 import settingsRoutes from './routes/settings.js';
+import outreachRoutes from './routes/outreach.js';
+import notificationRoutes from './routes/notifications.js';
 import { demoServerMiddleware } from './demoServer.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -35,6 +37,8 @@ app.use('/api/demos', demoRoutes);
 app.use('/api/tenants', tenantRoutes);
 app.use('/api/inquiries', inquiryRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/outreach', outreachRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 const clientDist = path.resolve(__dirname, '../../client/dist');
 if (fs.existsSync(clientDist)) {

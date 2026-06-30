@@ -24,6 +24,15 @@ export function clearToken(res) {
   res.clearCookie(COOKIE_NAME, { path: '/' });
 }
 
+// Non-middleware check: is this request from a logged-in admin? Used by the
+// demo server to allow admins (and only admins) to preview DISABLED tenants.
+export function isAdmin(req) {
+  const token = req.cookies?.[COOKIE_NAME];
+  if (!token) return false;
+  try { jwt.verify(token, config.jwtSecret); return true; }
+  catch { return false; }
+}
+
 export function requireAuth(req, res, next) {
   const token = req.cookies?.[COOKIE_NAME];
   if (!token) return res.status(401).json({ error: 'unauthorized' });

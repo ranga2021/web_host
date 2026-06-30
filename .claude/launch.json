@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "template-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "preview", "--", "--port", "4317", "--strictPort"],
+      "cwd": "template",
+      "port": 4317
+    }
+  ]
+}

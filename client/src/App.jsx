@@ -9,6 +9,8 @@ import Tenants from './pages/Tenants.jsx';
 import TenantEditor from './pages/TenantEditor.jsx';
 import Inquiries from './pages/Inquiries.jsx';
 import Settings from './pages/Settings.jsx';
+import Outreach from './pages/Outreach.jsx';
+import Notifications from './pages/Notifications.jsx';
 
 export default function App() {
   const [authed, setAuthed] = useState(null);
@@ -39,6 +41,8 @@ export default function App() {
           <Route path="/tenants/new" element={<TenantEditor />} />
           <Route path="/tenants/:id" element={<TenantEditor />} />
           <Route path="/inquiries" element={<Inquiries />} />
+          <Route path="/outreach" element={<Outreach />} />
+          <Route path="/notifications" element={<Notifications />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
@@ -50,14 +54,23 @@ export default function App() {
 function Sidebar({ onLogout }) {
   const nav = useNavigate();
   const [newCount, setNewCount] = useState(0);
+  const [draftCount, setDraftCount] = useState(0);
+  const [unread, setUnread] = useState(0);
 
-  // Live "new inquiries" badge — polls every 15s.
+  // Live badges — poll every 15s.
   useEffect(() => {
     let cancelled = false;
     async function poll() {
       try {
-        const d = await api.listInquiries();
-        if (!cancelled) setNewCount(d.counts?.new || 0);
+        const [inq, out, notif] = await Promise.all([
+          api.listInquiries().catch(() => null),
+          api.listOutreach('draft').catch(() => null),
+          api.notificationsUnread().catch(() => null),
+        ]);
+        if (cancelled) return;
+        if (inq) setNewCount(inq.counts?.new || 0);
+        if (out) setDraftCount(out.items?.length || 0);
+        if (notif) setUnread(notif.unread || 0);
       } catch { /* ignore */ }
     }
     poll();
@@ -88,6 +101,11 @@ function Sidebar({ onLogout }) {
           <span className="nav-icon">👥</span>
           <span>Tenants</span>
         </NavLink>
+        <NavLink to="/outreach">
+          <span className="nav-icon">📨</span>
+          <span>Review queue</span>
+          {draftCount > 0 && <span className="nav-badge">{draftCount}</span>}
+        </NavLink>
         <NavLink to="/inquiries">
           <span className="nav-icon">📥</span>
           <span>Inquiries</span>
@@ -109,6 +127,11 @@ function Sidebar({ onLogout }) {
 
       <div className="section">System</div>
       <nav>
+        <NavLink to="/notifications">
+          <span className="nav-icon">🔔</span>
+          <span>Notifications</span>
+          {unread > 0 && <span className="nav-badge">{unread}</span>}
+        </NavLink>
         <NavLink to="/settings">
           <span className="nav-icon">⚙</span>
           <span>Settings</span>
