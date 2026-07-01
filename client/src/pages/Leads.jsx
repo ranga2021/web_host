@@ -320,33 +320,36 @@ function LeadRow({ lead, canGenerate, onGenerate, onCreateTenant, onChanged, onE
       <td className="mono" style={{ fontSize: 12 }}>{lead.phone || <span className="muted">—</span>}</td>
       <td className="muted" style={{ fontSize: 12 }}>{lead.category || '—'}</td>
       <td><span className="badge">{lead.source || 'manual'}</span></td>
-      <td className="actions" style={{ whiteSpace: 'normal', minWidth: 240 }}>
-        <div className="row gap-sm" style={{ flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' }}>
-          {lead.status !== 'dismissed' && (
+      <td className="actions" style={{ whiteSpace: 'normal', minWidth: 280, verticalAlign: 'top' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+          <div style={{ display: 'flex', flexWrap: 'nowrap', gap: 6, justifyContent: 'flex-end' }}>
+            {lead.status !== 'dismissed' && (
+              <button
+                className="btn primary"
+                disabled={!!busy || !canGenerate || !emailValid}
+                title={!canGenerate ? 'Pick a template above first' : !emailValid ? 'Add a valid contact email first' : 'Generate a demo website for this business'}
+                onClick={createDemo}
+              >
+                {busy === 'gen' ? 'Generating…' : '⚡ Create demo'}
+              </button>
+            )}
+            {lead.status === 'dismissed' ? (
+              <button className="btn" disabled={busy} onClick={() => act('restore', () => api.restoreLead(lead.id))}>Restore</button>
+            ) : (
+              <button className="btn" disabled={busy} onClick={() => act('dismiss', () => api.dismissLead(lead.id))}>Dismiss</button>
+            )}
             <button
-              className="btn primary"
-              disabled={!!busy || !canGenerate || !emailValid}
-              title={!canGenerate ? 'Pick a template above first' : !emailValid ? 'Add a valid contact email first' : 'Generate a demo website for this business'}
-              onClick={createDemo}
+              className="btn danger"
+              disabled={busy}
+              onClick={() => { if (confirm(`Delete "${lead.business}"?`)) act('del', () => api.deleteLead(lead.id)); }}
             >
-              {busy === 'gen' ? 'Generating…' : '⚡ Create demo'}
+              Delete
             </button>
-          )}
-          {lead.status === 'dismissed' ? (
-            <button className="btn" disabled={busy} onClick={() => act('restore', () => api.restoreLead(lead.id))}>Restore</button>
-          ) : (
-            <button className="btn" disabled={busy} onClick={() => act('dismiss', () => api.dismissLead(lead.id))}>Dismiss</button>
-          )}
-          <button
-            className="btn danger"
-            disabled={busy}
-            onClick={() => { if (confirm(`Delete "${lead.business}"?`)) act('del', () => api.deleteLead(lead.id)); }}
-          >
-            Delete
-          </button>
+          </div>
           <button
             className="btn primary"
             disabled={!!busy}
+            style={{ width: '100%', justifyContent: 'center' }}
             title="Mark this lead reviewed and open the New Tenant form prefilled with its details"
             onClick={() => onCreateTenant(lead)}
           >

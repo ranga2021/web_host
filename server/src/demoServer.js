@@ -418,12 +418,60 @@ function buildSubstitutions(defaults, tenant) {
   for (const p of pairs) {
     if (!seen.has(p.from)) seen.set(p.from, p.to);
   }
+
+  // Bare-brand fallback: the field-parallel pairs above only replace the FULL
+  // default value (e.g. "Novatec Glass" -> tenant company name).  Templates
+  // routinely hardcode just the distinctive brand word inside copy — a hero
+  // headline like "Talk to a Novatec glass specialist." — which never matches
+  // the full company name (different trailing words / casing).  Emit an extra
+  // pair mapping the template's brand short-name to the tenant's brand
+  // short-name so those bare occurrences get rewritten too.  Sorted longer-
+  // first below, so the full-name pair still wins wherever it applies.
+  const dName = typeof defaults?.company?.name === 'string' ? defaults.company.name.trim() : '';
+  const tName = typeof tenant?.company?.name === 'string' ? tenant.company.name.trim() : '';
+  if (dName && tName && dName !== tName) {
+    const dShort = brandShortName(dName);
+    const tShort = brandShortName(tName);
+    // Guard against over-matching: only add if the template token is a
+    // distinctive word (>= 4 chars) and we haven't already got a pair for it.
+    if (dShort && tShort && dShort !== tShort && dShort.length >= 4 && !seen.has(dShort)) {
+      seen.set(dShort, tShort);
+    }
+  }
+
   return [...seen.entries()]
     .map(([from, to]) => ({ from, to }))
     // Skip same-value pairs (no rewrite needed) and tiny strings (would
     // produce far too many spurious matches inside the JS bundle).
     .filter(({ from, to }) => from !== to && from.length >= 3)
     .sort((a, b) => b.from.length - a.from.length);
+}
+
+// Generic industry / legal / geographic descriptor words that trail a company
+// name.  Stripped from the end to isolate the distinctive brand token(s):
+//   "Novatec Glass"          -> "Novatec"
+//   "Ezy Glide Shower Screens" -> "Ezy Glide"
+//   "Acme Solutions Pty Ltd" -> "Acme"
+const BRAND_DESCRIPTORS = new Set([
+  'glass', 'glazing', 'shower', 'showers', 'screen', 'screens', 'windows',
+  'doors', 'industries', 'industry', 'group', 'solutions', 'systems',
+  'services', 'service', 'company', 'co', 'corp', 'corporation', 'inc',
+  'incorporated', 'llc', 'ltd', 'limited', 'pty', 'plc', 'gmbh', 'australia',
+  'australian', 'international', 'global', 'holdings', 'enterprises',
+  'trading', 'supplies', 'supply', 'products', 'manufacturing', 'contractors',
+  'construction', 'partners', 'associates', 'the',
+]);
+
+function brandShortName(fullName) {
+  const words = fullName.trim().split(/\s+/);
+  const clean = (w) => w.toLowerCase().replace(/[^a-z0-9]/g, '');
+  // Strip trailing descriptor words, but always keep at least the first word.
+  let end = words.length;
+  while (end > 1 && BRAND_DESCRIPTORS.has(clean(words[end - 1]))) end--;
+  // Also drop a leading "The " so "The Glass Co" -> "Glass".
+  let start = 0;
+  if (end - start > 1 && clean(words[start]) === 'the') start++;
+  return words.slice(start, end).join(' ');
 }
 
 function walk(dflt, override, out) {
