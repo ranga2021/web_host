@@ -151,7 +151,7 @@ export default function Leads() {
         ))}
       </div>
 
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
         {loading ? (
           <div className="empty">Loading…</div>
         ) : data.items.length === 0 ? (
@@ -313,43 +313,46 @@ function LeadRow({ lead, canGenerate, onGenerate, onCreateTenant, onChanged, onE
       </td>
       <td>
         {lead.website
-          ? <a href={lead.website} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 12 }}>{shortUrl(lead.website)}</a>
+          ? <a href={lead.website} target="_blank" rel="noreferrer" title={lead.website}
+               className="mono ellipsis" style={{ fontSize: 12, display: 'inline-block', maxWidth: 200, verticalAlign: 'middle' }}>{shortUrl(lead.website)}</a>
           : <span className="muted">— no site —</span>}
       </td>
       <td className="mono" style={{ fontSize: 12 }}>{lead.phone || <span className="muted">—</span>}</td>
       <td className="muted" style={{ fontSize: 12 }}>{lead.category || '—'}</td>
       <td><span className="badge">{lead.source || 'manual'}</span></td>
-      <td className="actions">
-        {lead.status !== 'dismissed' && (
+      <td className="actions" style={{ whiteSpace: 'normal', minWidth: 240 }}>
+        <div className="row gap-sm" style={{ flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' }}>
+          {lead.status !== 'dismissed' && (
+            <button
+              className="btn primary"
+              disabled={!!busy || !canGenerate || !emailValid}
+              title={!canGenerate ? 'Pick a template above first' : !emailValid ? 'Add a valid contact email first' : 'Generate a demo website for this business'}
+              onClick={createDemo}
+            >
+              {busy === 'gen' ? 'Generating…' : '⚡ Create demo'}
+            </button>
+          )}
+          {lead.status === 'dismissed' ? (
+            <button className="btn" disabled={busy} onClick={() => act('restore', () => api.restoreLead(lead.id))}>Restore</button>
+          ) : (
+            <button className="btn" disabled={busy} onClick={() => act('dismiss', () => api.dismissLead(lead.id))}>Dismiss</button>
+          )}
+          <button
+            className="btn danger"
+            disabled={busy}
+            onClick={() => { if (confirm(`Delete "${lead.business}"?`)) act('del', () => api.deleteLead(lead.id)); }}
+          >
+            Delete
+          </button>
           <button
             className="btn primary"
-            disabled={!!busy || !canGenerate || !emailValid}
-            title={!canGenerate ? 'Pick a template above first' : !emailValid ? 'Add a valid contact email first' : 'Generate a demo website for this business'}
-            onClick={createDemo}
+            disabled={!!busy}
+            title="Mark this lead reviewed and open the New Tenant form prefilled with its details"
+            onClick={() => onCreateTenant(lead)}
           >
-            {busy === 'gen' ? 'Generating…' : '⚡ Create demo'}
+            ✓ Reviewed — pass to create a tenant
           </button>
-        )}{' '}
-        {lead.status === 'dismissed' ? (
-          <button className="btn" disabled={busy} onClick={() => act('restore', () => api.restoreLead(lead.id))}>Restore</button>
-        ) : (
-          <button className="btn" disabled={busy} onClick={() => act('dismiss', () => api.dismissLead(lead.id))}>Dismiss</button>
-        )}{' '}
-        <button
-          className="btn danger"
-          disabled={busy}
-          onClick={() => { if (confirm(`Delete "${lead.business}"?`)) act('del', () => api.deleteLead(lead.id)); }}
-        >
-          Delete
-        </button>{' '}
-        <button
-          className="btn primary"
-          disabled={!!busy}
-          title="Mark this lead reviewed and open the New Tenant form prefilled with its details"
-          onClick={() => onCreateTenant(lead)}
-        >
-          ✓ Reviewed — pass to create a tenant
-        </button>
+        </div>
       </td>
     </tr>
   );
