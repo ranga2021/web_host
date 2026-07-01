@@ -3,6 +3,7 @@ import { requireAuth } from '../auth.js';
 import { queries } from '../db.js';
 import { notify } from '../notify.js';
 import { collectLeads, placesConfigured } from '../leadSources.js';
+import { fetchSheetLeads } from '../sheetImport.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -109,6 +110,40 @@ router.post('/collect', async (req, res) => {
     blocked: !!blocked,
     ran,
     placesConfigured: placesConfigured(),
+    counts: counts(),
+    items: queries.listLeadsByStatus.all('new'),
+  });
+});
+
+// Import straight from the configured Google Sheet — the dashboard "Import
+// from Google Sheet" button. Reads the public CSV export (no credentials),
+// maps rows to leads, and inserts them deduped. Optional body overrides let
+// the caller point at a different sheet/tab.
+router.post('/import-sheet', async (req, res) => {
+  let leads;
+  try {
+    leads = await fetchSheetLeads({
+      sheetId: req.body?.sheetId?.trim() || undefined,
+      gid: req.body?.gid?.toString().trim() || undefined,
+    });
+  } catch (err) {
+    return res.status(502).json({ error: err.message });
+  }
+
+  const inserted = insertLeads(leads, 'google-sheet');
+  if (inserted > 0) {
+    await notify({
+      kind: 'leads_collected',
+      title: `${inserted} lead${inserted === 1 ? '' : 's'} imported from Google Sheet`,
+      body: 'Rows from the connected Google Sheet were added. Review them and add contact emails.',
+      link: '/admin/leads',
+    });
+  }
+
+  res.json({
+    inserted,
+    found: leads.length,
+    skipped: leads.length - inserted,
     counts: counts(),
     items: queries.listLeadsByStatus.all('new'),
   });

@@ -71,4 +71,10 @@ export const config = {
   // Google Places API key. Optional: without it the collector falls back to
   // the Yellow Pages scraper only (which Google/YP may rate-limit).
   placesApiKey: process.env.PLACES_API_KEY || '',
+
+  // ---- Google Sheet import (the dashboard "Import from Google Sheet" button) ----
+  // Reads the sheet's public CSV export — no credentials needed as long as the
+  // sheet is shared "Anyone with the link can view".
+  sheetId: process.env.SHEET_ID || '16ji6lTjhpsud4gQdVCD_UrJKqoWY4O13zt90Uv3ts3c',
+  sheetGid: process.env.SHEET_GID || '0',
 };

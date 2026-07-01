@@ -12,6 +12,8 @@ export default function Leads() {
   const [data, setData] = useState({ items: [], counts: {} });
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
   const [err, setErr] = useState('');
 
   const load = useCallback(async () => {
@@ -25,16 +27,43 @@ export default function Leads() {
 
   useEffect(() => { load(); }, [load]);
 
+  async function importSheet() {
+    setImporting(true); setImportResult(null); setErr('');
+    try {
+      const r = await api.importSheet();
+      setImportResult(r);
+      if (status !== 'new') setStatus('new'); else await load();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setImporting(false);
+    }
+  }
+
   return (
     <div className="container">
       <div className="row between" style={{ alignItems: 'center', marginBottom: 16 }}>
         <h1 style={{ margin: 0 }}>Collected leads</h1>
-        <button className="btn primary" onClick={() => setAdding((v) => !v)}>{adding ? 'Close' : '+ Add lead'}</button>
+        <div className="row gap-sm">
+          <button className="btn" onClick={importSheet} disabled={importing}>
+            {importing ? 'Importing…' : '⬇ Import from Google Sheet'}
+          </button>
+          <button className="btn primary" onClick={() => setAdding((v) => !v)}>{adding ? 'Close' : '+ Add lead'}</button>
+        </div>
       </div>
 
+      {importResult && (
+        <div className="card" style={{ marginBottom: 12, background: 'var(--surface-2)', borderLeft: `3px solid ${importResult.inserted ? 'var(--success)' : 'var(--warn)'}` }}>
+          {importResult.inserted > 0
+            ? <strong>✓ Imported {importResult.inserted} new lead{importResult.inserted === 1 ? '' : 's'} from the Google Sheet.</strong>
+            : <strong>No new leads imported.</strong>}{' '}
+          <span className="muted">{importResult.found} rows read, {importResult.skipped} already known.</span>
+        </div>
+      )}
+
       <p className="muted" style={{ marginTop: 0 }}>
-        Businesses the bot gathered from Yellow Pages / Google Places. Review them, add a contact email, then
-        they're ready for the generator to draft a demo.
+        Businesses imported from your Google Sheet or gathered from Yellow Pages / Google Places. Review them,
+        add a contact email, then they're ready for the generator to draft a demo.
       </p>
 
       {err && <div className="error">{err}</div>}
