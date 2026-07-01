@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 
 const STATUSES = ['new', 'dismissed', 'all'];
@@ -8,6 +9,7 @@ const blankLead = { business: '', website: '', email: '', phone: '', category: '
 const CATEGORY_PRESETS = ['Restaurants', 'Dentists', 'Gyms', 'Law firms', 'Real estate agents', 'Plumbers', 'Cafes', 'Salons'];
 
 export default function Leads() {
+  const navigate = useNavigate();
   const [status, setStatus] = useState('new');
   const [data, setData] = useState({ items: [], counts: {} });
   const [loading, setLoading] = useState(true);
@@ -55,6 +57,15 @@ export default function Leads() {
     await load();
     return r;
   }, [templateId, load]);
+
+  // Mark the lead reviewed and hand it off to the New Tenant form, prefilled with
+  // the business name and the currently selected template.
+  const createTenant = useCallback((lead) => {
+    const params = new URLSearchParams();
+    if (lead.business) params.set('name', lead.business);
+    if (templateId) params.set('template', String(templateId));
+    navigate(`/tenants/new?${params.toString()}`);
+  }, [navigate, templateId]);
 
   async function importSheet() {
     setImporting(true); setImportResult(null); setErr('');
@@ -167,6 +178,7 @@ export default function Leads() {
                   lead={l}
                   canGenerate={templates.length > 0 && !!templateId}
                   onGenerate={generateDemo}
+                  onCreateTenant={createTenant}
                   onChanged={load}
                   onError={setErr}
                 />
@@ -250,7 +262,7 @@ function CollectLeads({ onCollected, onError }) {
   );
 }
 
-function LeadRow({ lead, canGenerate, onGenerate, onChanged, onError }) {
+function LeadRow({ lead, canGenerate, onGenerate, onCreateTenant, onChanged, onError }) {
   const [email, setEmail] = useState(lead.email || '');
   const [busy, setBusy] = useState('');
   const dirty = (email || '') !== (lead.email || '');
@@ -329,6 +341,14 @@ function LeadRow({ lead, canGenerate, onGenerate, onChanged, onError }) {
           onClick={() => { if (confirm(`Delete "${lead.business}"?`)) act('del', () => api.deleteLead(lead.id)); }}
         >
           Delete
+        </button>{' '}
+        <button
+          className="btn primary"
+          disabled={!!busy}
+          title="Mark this lead reviewed and open the New Tenant form prefilled with its details"
+          onClick={() => onCreateTenant(lead)}
+        >
+          ✓ Reviewed — pass to create a tenant
         </button>
       </td>
     </tr>

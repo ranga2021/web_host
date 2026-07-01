@@ -32,11 +32,25 @@ export default function TenantEditor() {
   useEffect(() => {
     api.listDemos().then((rows) => {
       setTemplates(rows);
-      if (isNew && search.get('template')) {
-        setForm((f) => ({ ...f, template_id: Number(search.get('template')) }));
-      } else if (isNew && rows.length === 1) {
-        setForm((f) => ({ ...f, template_id: rows[0].id }));
-      }
+      setForm((f) => {
+        let next = f;
+        // Prefill from a lead handed off via ?name= (see the Leads page).
+        const nm = isNew ? search.get('name') : null;
+        if (nm) {
+          next = {
+            ...next,
+            name: nm,
+            slug: autoSlug(nm),
+            config: { ...next.config, company: { ...next.config.company, name: nm } },
+          };
+        }
+        if (isNew && search.get('template')) {
+          next = { ...next, template_id: Number(search.get('template')) };
+        } else if (isNew && rows.length === 1) {
+          next = { ...next, template_id: rows[0].id };
+        }
+        return next;
+      });
     }).catch((e) => setErr(e.message));
 
     if (!isNew) {
