@@ -14,6 +14,10 @@ export default function Leads() {
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [templates, setTemplates] = useState([]);
+  const [templateId, setTemplateId] = useState('');
+  const [claudeOn, setClaudeOn] = useState(false);
+  const [genMsg, setGenMsg] = useState(null);
   const [err, setErr] = useState('');
 
   const load = useCallback(async () => {
@@ -26,6 +30,31 @@ export default function Leads() {
   }, [status]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Load the templates available to generate demos from (once).
+  useEffect(() => {
+    api.leadGenerateOptions()
+      .then((o) => {
+        setTemplates(o.templates || []);
+        setClaudeOn(!!o.claudeConfigured);
+        setTemplateId((prev) => prev || (o.templates?.[0]?.id ? String(o.templates[0].id) : ''));
+      })
+      .catch(() => {});
+  }, []);
+
+  const generateDemo = useCallback(async (lead) => {
+    if (!templateId) { setErr('Pick a template to generate from first.'); return; }
+    setErr(''); setGenMsg(null);
+    const r = await api.generateDemo(lead.id, Number(templateId));
+    setGenMsg({
+      business: lead.business,
+      url: r.demo_url,
+      usedClaude: r.usedClaude,
+      template: r.template?.name,
+    });
+    await load();
+    return r;
+  }, [templateId, load]);
 
   async function importSheet() {
     setImporting(true); setImportResult(null); setErr('');
@@ -63,10 +92,41 @@ export default function Leads() {
 
       <p className="muted" style={{ marginTop: 0 }}>
         Businesses imported from your Google Sheet or gathered from Yellow Pages / Google Places. Review them,
-        add a contact email, then they're ready for the generator to draft a demo.
+        add a contact email, then click <strong>⚡ Create demo</strong> to auto-generate a tenant website from
+        each business's details and its own site.
       </p>
 
       {err && <div className="error">{err}</div>}
+
+      {genMsg && (
+        <div className="card" style={{ marginBottom: 12, background: 'var(--surface-2)', borderLeft: '3px solid var(--success)' }}>
+          <strong>✓ Demo created for {genMsg.business}.</strong>{' '}
+          <span className="muted">
+            Generated from “{genMsg.template}” {genMsg.usedClaude ? 'with Claude' : 'from a template'}. It's in the{' '}
+            <a href="/admin/outreach">Review queue</a> (hidden until you approve).{' '}
+            <a href={genMsg.url} target="_blank" rel="noreferrer">Preview →</a>
+          </span>
+        </div>
+      )}
+
+      <section className="card" style={{ marginBottom: 12 }}>
+        <div className="row gap-sm" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 600 }}>⚡ Auto-generate demos from template:</span>
+          {templates.length === 0 ? (
+            <span className="muted">No templates yet — <a href="/admin/new">create one</a> first.</span>
+          ) : (
+            <select className="input" style={{ maxWidth: 280 }} value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>{t.name} ({t.slug})</option>
+              ))}
+            </select>
+          )}
+          <span className="muted" style={{ fontSize: 12 }}>
+            {claudeOn ? 'Claude is configured — copy is written from each business’s own website.'
+                      : 'No Claude key set — demos use a template with the lead’s details.'}
+          </span>
+        </div>
+      </section>
 
       <CollectLeads onCollected={load} onError={setErr} />
 
@@ -101,7 +161,16 @@ export default function Leads() {
               </tr>
             </thead>
             <tbody>
-              {data.items.map((l) => <LeadRow key={l.id} lead={l} onChanged={load} onError={setErr} />)}
+              {data.items.map((l) => (
+                <LeadRow
+                  key={l.id}
+                  lead={l}
+                  canGenerate={templates.length > 0 && !!templateId}
+                  onGenerate={generateDemo}
+                  onChanged={load}
+                  onError={setErr}
+                />
+              ))}
             </tbody>
           </table>
         )}
@@ -181,16 +250,30 @@ function CollectLeads({ onCollected, onError }) {
   );
 }
 
-function LeadRow({ lead, onChanged, onError }) {
+function LeadRow({ lead, canGenerate, onGenerate, onChanged, onError }) {
   const [email, setEmail] = useState(lead.email || '');
   const [busy, setBusy] = useState('');
   const dirty = (email || '') !== (lead.email || '');
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
   async function act(kind, fn) {
     setBusy(kind);
     try { await fn(); await onChanged(); }
     catch (e) { onError(e.message); }
     finally { setBusy(''); }
+  }
+
+  async function createDemo() {
+    setBusy('gen');
+    try {
+      // Persist an edited-but-unsaved email first so the demo uses it.
+      if (dirty) await api.updateLead(lead.id, { email });
+      await onGenerate({ ...lead, email });
+    } catch (e) {
+      onError(e.message);
+    } finally {
+      setBusy('');
+    }
   }
 
   return (
@@ -225,6 +308,16 @@ function LeadRow({ lead, onChanged, onError }) {
       <td className="muted" style={{ fontSize: 12 }}>{lead.category || '—'}</td>
       <td><span className="badge">{lead.source || 'manual'}</span></td>
       <td className="actions">
+        {lead.status !== 'dismissed' && (
+          <button
+            className="btn primary"
+            disabled={!!busy || !canGenerate || !emailValid}
+            title={!canGenerate ? 'Pick a template above first' : !emailValid ? 'Add a valid contact email first' : 'Generate a demo website for this business'}
+            onClick={createDemo}
+          >
+            {busy === 'gen' ? 'Generating…' : '⚡ Create demo'}
+          </button>
+        )}{' '}
         {lead.status === 'dismissed' ? (
           <button className="btn" disabled={busy} onClick={() => act('restore', () => api.restoreLead(lead.id))}>Restore</button>
         ) : (

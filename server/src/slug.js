@@ -12,3 +12,25 @@ export function validateSlug(slug) {
   if (RESERVED.has(slug)) return `slug "${slug}" is reserved`;
   return null;
 }
+
+// Turn a business name into a valid base slug.
+export function slugify(name) {
+  let s = String(name || '')
+    .normalize('NFKD').replace(/[̀-ͯ]/g, '') // strip accents
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+    .replace(/-+$/g, '');
+  if (!s) s = 'demo';
+  if (RESERVED.has(s)) s = `${s}-demo`.slice(0, 40);
+  return s;
+}
+
+// Produce a candidate, then -2, -3, … variants (used on slug collisions).
+export function slugCandidate(base, attempt) {
+  if (attempt <= 1) return base;
+  const suffix = `-${attempt}`;
+  return `${base.slice(0, 40 - suffix.length).replace(/-+$/g, '')}${suffix}`;
+}

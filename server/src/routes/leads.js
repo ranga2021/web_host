@@ -1,9 +1,12 @@
 import { Router } from 'express';
 import { requireAuth } from '../auth.js';
+import { config } from '../config.js';
 import { queries } from '../db.js';
 import { notify } from '../notify.js';
 import { collectLeads, placesConfigured } from '../leadSources.js';
 import { fetchSheetLeads } from '../sheetImport.js';
+import { slugify, slugCandidate, validateSlug } from '../slug.js';
+import { recFromLead, enrichFromWebsite, generateSiteConfig, renderEmailDraft, isEmail, claudeConfigured } from '../siteGen.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -147,6 +150,89 @@ router.post('/import-sheet', async (req, res) => {
     counts: counts(),
     items: queries.listLeadsByStatus.all('new'),
   });
+});
+
+// Create a demo tenant automatically from a lead + a chosen template.
+// Generates the site content from the lead's details and its own website
+// (Claude when configured, else a template), creates a DISABLED tenant, and
+// queues an outreach draft for review — exactly like the bot's generate step.
+router.post('/:id/generate-demo', async (req, res) => {
+  const lead = queries.getLead.get(req.params.id);
+  if (!lead) return res.status(404).json({ error: 'not found' });
+
+  const template = queries.getDemoById.get(Number(req.body?.template_id));
+  if (!template) return res.status(400).json({ error: 'select a template first' });
+
+  const email = (lead.email || '').trim();
+  if (!isEmail(email)) return res.status(400).json({ error: 'add a valid contact email before creating a demo' });
+
+  try {
+    // 1. Generate site content, grounded on the lead's real website.
+    const rec = recFromLead(lead);
+    const enrichment = await enrichFromWebsite(lead.website);
+    const { config: siteCfg, usedClaude } = await generateSiteConfig(rec, enrichment);
+
+    // 2. Create the tenant DISABLED (hidden until approved), retrying on slug collisions.
+    const base = slugify(lead.business);
+    let tenant = null;
+    for (let attempt = 1; attempt <= 8 && !tenant; attempt++) {
+      const slug = slugCandidate(base, attempt);
+      if (validateSlug(slug)) continue;
+      if (queries.getTenantBySlug(slug) || queries.getDemoBySlug.get(slug)) continue;
+      const info = queries.insertTenant.run({
+        slug, name: lead.business, template_id: template.id, config: JSON.stringify(siteCfg),
+      });
+      tenant = queries.getTenantById(info.lastInsertRowid);
+    }
+    if (!tenant) return res.status(409).json({ error: 'could not allocate a unique slug for this business' });
+    queries.setTenantEnabled.run(0, tenant.id);
+
+    // 3. Draft the outreach email and queue it for review.
+    const demoUrl = `${config.publicBaseUrl}/${tenant.slug}/`;
+    const draft = renderEmailDraft(rec, demoUrl);
+    const o = queries.insertOutreach.run({
+      tenant_id: tenant.id,
+      sheet_row: null,
+      business: lead.business,
+      email_to: email,
+      email_subject: draft.subject,
+      email_body: draft.body,
+      demo_url: demoUrl,
+    });
+
+    // 4. Take the lead out of the review list, noting the demo it produced.
+    queries.updateLead.run({
+      id: lead.id,
+      business: lead.business, website: lead.website, email: lead.email, phone: lead.phone,
+      address: lead.address, category: lead.category, region: lead.region,
+      notes: `Demo created → ${demoUrl}`,
+    });
+    queries.setLeadStatus.run({ id: lead.id, status: 'dismissed' });
+
+    await notify({
+      kind: 'drafts_ready',
+      title: `Demo drafted for ${lead.business}`,
+      body: `A website demo was generated from "${template.name}". Review and approve to send.`,
+      link: '/admin/outreach',
+    });
+
+    res.status(201).json({
+      tenant: { id: tenant.id, slug: tenant.slug, url: demoUrl },
+      outreach_id: o.lastInsertRowid,
+      demo_url: demoUrl,
+      usedClaude,
+      template: { id: template.id, name: template.name },
+      counts: counts(),
+    });
+  } catch (err) {
+    res.status(500).json({ error: `demo generation failed: ${err.message}` });
+  }
+});
+
+// Which templates are available to generate from + whether Claude is wired up.
+router.get('/generate/options', (req, res) => {
+  const templates = queries.listDemos.all().map((d) => ({ id: d.id, name: d.name, slug: d.slug, status: d.status }));
+  res.json({ templates, claudeConfigured: claudeConfigured() });
 });
 
 // Manual add of a single lead from the admin UI.

@@ -65,6 +65,8 @@ export const api = {
   listLeads: (status) => request(`/leads${status ? `?status=${encodeURIComponent(status)}` : ''}`),
   collectLeads: (data) => request('/leads/collect', { method: 'POST', body: JSON.stringify(data) }),
   importSheet: (data = {}) => request('/leads/import-sheet', { method: 'POST', body: JSON.stringify(data) }),
+  leadGenerateOptions: () => request('/leads/generate/options'),
+  generateDemo: (id, template_id) => request(`/leads/${id}/generate-demo`, { method: 'POST', body: JSON.stringify({ template_id }) }),
   addLead: (data) => request('/leads', { method: 'POST', body: JSON.stringify(data) }),
   updateLead: (id, data) => request(`/leads/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   dismissLead: (id) => request(`/leads/${id}/dismiss`, { method: 'POST' }),

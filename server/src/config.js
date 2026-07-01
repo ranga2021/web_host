@@ -77,4 +77,11 @@ export const config = {
   // sheet is shared "Anyone with the link can view".
   sheetId: process.env.SHEET_ID || '16ji6lTjhpsud4gQdVCD_UrJKqoWY4O13zt90Uv3ts3c',
   sheetGid: process.env.SHEET_GID || '0',
+
+  // ---- Automatic demo generation (the Leads "Create demo" button) ----
+  // With a key, site copy is written by Claude grounded on the lead's own
+  // website. Without one, a deterministic template is used instead — the
+  // button still works, just with generic copy.
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+  claudeModel: process.env.CLAUDE_MODEL || 'claude-opus-4-8',
 };
