@@ -2,8 +2,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 
-const STATUSES = ['draft', 'sent', 'failed', 'rejected', 'all'];
-const STATUS_LABEL = { draft: 'Pending review', sent: 'Sent', failed: 'Failed', rejected: 'Rejected', all: 'All' };
+const STATUSES = ['draft', 'approved', 'sent', 'failed', 'rejected', 'all'];
+const STATUS_LABEL = { draft: 'Pending review', approved: 'Approved', sent: 'Sent', failed: 'Failed', rejected: 'Rejected', all: 'All' };
 
 export default function Outreach() {
   const [status, setStatus] = useState('draft');
@@ -82,7 +82,7 @@ export default function Outreach() {
 }
 
 function StatusPill({ status }) {
-  const color = { draft: '#b45309', sent: '#15803d', failed: '#b91c1c', rejected: '#6b7280' }[status] || '#6b7280';
+  const color = { draft: '#b45309', approved: '#2563eb', sent: '#15803d', failed: '#b91c1c', rejected: '#6b7280' }[status] || '#6b7280';
   return <span style={{ fontSize: 11, fontWeight: 700, color, textTransform: 'uppercase' }}>{status}</span>;
 }
 
@@ -106,6 +106,8 @@ function Detail({ id, onChanged }) {
   if (!o) return <div className="card muted">Loading…</div>;
 
   const isDraft = o.status === 'draft' || o.status === 'failed';
+  const isApproved = o.status === 'approved';
+  const canEdit = isDraft || isApproved;   // editable until the email actually goes out
 
   async function save() {
     setBusy('save'); setErr('');
@@ -115,9 +117,17 @@ function Detail({ id, onChanged }) {
   }
   async function approve() {
     if (dirty) await save();
-    if (!confirm(`Send this email to ${o.email_to} and publish the demo?`)) return;
+    if (!confirm('Publish this demo live? No email is sent yet — you send that in the next step.')) return;
     setBusy('approve'); setErr('');
     try { await api.approveOutreach(id); await onChanged(); const d = await api.getOutreach(id); setO(d); }
+    catch (e) { setErr(e.message); }
+    finally { setBusy(''); }
+  }
+  async function send() {
+    if (dirty) await save();
+    if (!confirm(`Send this email to ${o.email_to}?`)) return;
+    setBusy('send'); setErr('');
+    try { await api.sendOutreach(id); await onChanged(); const d = await api.getOutreach(id); setO(d); }
     catch (e) { setErr(e.message); }
     finally { setBusy(''); }
   }
@@ -159,7 +169,7 @@ function Detail({ id, onChanged }) {
         <input
           className="input"
           value={subject}
-          disabled={!isDraft}
+          disabled={!canEdit}
           onChange={(e) => { setSubject(e.target.value); setDirty(true); }}
         />
       </div>
@@ -169,17 +179,25 @@ function Detail({ id, onChanged }) {
           className="textarea"
           style={{ minHeight: 240 }}
           value={body}
-          disabled={!isDraft}
+          disabled={!canEdit}
           onChange={(e) => { setBody(e.target.value); setDirty(true); }}
         />
         <div className="muted" style={{ fontSize: 12 }}>Plain text. The demo link is included above in the body; keep it in.</div>
       </div>
 
-      {isDraft && (
+      {canEdit && (
         <div className="row gap-sm" style={{ marginTop: 12 }}>
           <button className="btn" disabled={!dirty || busy} onClick={save}>{busy === 'save' ? 'Saving…' : 'Save draft'}</button>
-          <button className="btn primary" disabled={busy} onClick={approve}>{busy === 'approve' ? 'Sending…' : '✓ Approve & send'}</button>
+          <button className="btn primary" disabled={busy || !isDraft} onClick={approve}>
+            {busy === 'approve' ? 'Approving…' : isApproved ? '✓ Approved' : '✓ Approve demo'}
+          </button>
+          <button className="btn primary" disabled={busy || !isApproved} onClick={send}>{busy === 'send' ? 'Sending…' : '✉ Send email'}</button>
           <button className="btn danger" disabled={busy} onClick={reject}>Reject</button>
+        </div>
+      )}
+      {isApproved && (
+        <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+          Demo is live. Review the email above, then click <strong>Send email</strong> to reach out.
         </div>
       )}
       {o.status === 'sent' && (

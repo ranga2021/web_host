@@ -72,7 +72,7 @@ router.patch('/:id', (req, res) => {
   res.json(serialize(queries.getOutreach.get(o.id)));
 });
 
-// Approve → enable the tenant (go live) + send the email + record sent.
+// Approve → enable the tenant (go live). No email yet; that's a separate Send step.
 router.post('/:id/approve', async (req, res) => {
   const o = queries.getOutreach.get(req.params.id);
   if (!o) return res.status(404).json({ error: 'not found' });
@@ -81,8 +81,31 @@ router.post('/:id/approve', async (req, res) => {
   const tenant = queries.getTenantById(o.tenant_id);
   if (!tenant) return res.status(400).json({ error: 'tenant missing' });
 
+  queries.setTenantEnabled.run(1, tenant.id);                // go live
+  queries.setOutreachStatus.run({ id: o.id, status: 'approved', error: null, sent_at: null });
+  await notify({
+    kind: 'demo_approved',
+    title: `Demo approved for ${o.business}`,
+    body: `Demo is now live at ${o.demo_url} — ready to send the email.`,
+    link: `/admin/outreach`,
+  });
+  res.json(serialize(queries.getOutreach.get(o.id)));
+});
+
+// Send → email the customer + record sent. Requires an approved (live) demo.
+router.post('/:id/send', async (req, res) => {
+  const o = queries.getOutreach.get(req.params.id);
+  if (!o) return res.status(404).json({ error: 'not found' });
+  if (o.status === 'sent') return res.status(409).json({ error: 'already sent' });
+  if (o.status !== 'approved' && o.status !== 'failed') {
+    return res.status(409).json({ error: 'approve the demo before sending' });
+  }
+
+  const tenant = queries.getTenantById(o.tenant_id);
+  if (!tenant) return res.status(400).json({ error: 'tenant missing' });
+
   try {
-    queries.setTenantEnabled.run(1, tenant.id);              // go live
+    queries.setTenantEnabled.run(1, tenant.id);              // ensure live (covers a failed-send retry)
     await sendOutreach({ to: o.email_to, subject: o.email_subject, body: o.email_body });
     queries.setOutreachStatus.run({ id: o.id, status: 'sent', error: null, sent_at: new Date().toISOString() });
     await notify({

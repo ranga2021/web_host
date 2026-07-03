@@ -59,6 +59,7 @@ export const api = {
   getOutreach: (id) => request(`/outreach/${id}`),
   updateOutreach: (id, data) => request(`/outreach/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   approveOutreach: (id) => request(`/outreach/${id}/approve`, { method: 'POST' }),
+  sendOutreach: (id) => request(`/outreach/${id}/send`, { method: 'POST' }),
   rejectOutreach: (id) => request(`/outreach/${id}/reject`, { method: 'POST' }),
 
   // leads (collected businesses awaiting review)
